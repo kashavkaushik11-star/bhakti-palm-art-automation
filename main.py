@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -9,12 +10,12 @@ import requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from huggingface_hub import InferenceClient
+from gradio_client import Client
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
 MUSIC = ROOT / "music"
-REFERENCE = ROOT / "palm_reference.jpg.jpg"  # Human visual reference only; NEVER sent to the model.
+REFERENCE = ROOT / "palm_reference.jpg.jpg"  # Kept in repo for human visual reference only; NOT sent to the model.
 WORK.mkdir(exist_ok=True)
 
 TOPICS = [
@@ -27,7 +28,7 @@ TOPICS = [
 
 PALM_SCENES = {
     "krishna": "Vrindavan and Mathura pilgrimage, Yamuna river, ancient ghats, Govardhan hill, cows, trees, tiny Krishna temples and many tiny pilgrims",
-    "shiv": "Tungnath Temple pilgrimage in the Garhwal Himalayas, the ancient stone Tungnath Shiva temple as a SMALL detailed landmark, steep Himalayan trail, snowy mountain peaks, alpine meadows, rocky slopes, winding mountain stream, stone steps, tiny pilgrims carrying backpacks, small bells and distant mountain shrines",
+    "shiv": "Tungnath Temple pilgrimage in Uttarakhand, Himalayan snow peaks, steep stone trail, ancient stone Tungnath Shiva temple, small mountain shrine, stone steps, rocky slopes, winding mountain stream, alpine meadows and many tiny pilgrims",
     "hanuman": "Ayodhya and Ram-Hanuman pilgrimage, river, forest, stone bridge, distant mountain, tiny temples and many tiny pilgrims",
     "ram": "Ayodhya and Ramayana pilgrimage, Sarayu river, ghats, forest paths, stone bridge, tiny temples, villages and many tiny pilgrims",
     "mata": "Himalayan Mata Rani pilgrimage, steep mountain valley, long stairway, shrine, temple flags, rocky terrain and many tiny devotees",
@@ -64,24 +65,35 @@ def generate_qwen_image(prompt: str, output: Path):
     if not token:
         raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
 
-    client = InferenceClient(api_key=token, provider="auto")
+    # Use Qwen's official public Hugging Face ZeroGPU Space instead of
+    # Hugging Face Inference Providers. This avoids the exhausted monthly
+    # Inference-Provider credits shown in the failed GitHub run.
     last_error = None
     for attempt in range(3):
         try:
-            result = client.text_to_image(
-                prompt=prompt,
-                model="Qwen/Qwen-Image",
-                width=768,
-                height=1360,
+            client = Client("Qwen/Qwen-Image", token=token)
+            result = client.predict(
+                prompt,
+                0,
+                True,
+                "9:16",
+                4.0,
+                30,
+                False,
+                api_name="/infer",
             )
-            result.save(output)
-            print("Image generated with Hugging Face Qwen/Qwen-Image (text-to-image, no reference image input).")
+            image_result = result[0] if isinstance(result, (tuple, list)) else result
+            source = Path(str(image_result))
+            if not source.exists():
+                raise RuntimeError(f"Qwen ZeroGPU returned an unexpected image result: {image_result}")
+            shutil.copyfile(source, output)
+            print("Image generated with Qwen/Qwen-Image through the official Hugging Face ZeroGPU Space (9:16).")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Qwen-Image attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"Qwen ZeroGPU attempt {attempt + 1}/3 failed: {last_error}")
             time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"Qwen/Qwen-Image generation failed: {last_error}")
+    raise RuntimeError(f"Qwen/Qwen-Image ZeroGPU generation failed: {last_error}")
 
 
 def make_fallback_devotional_music(category: str) -> Path:
@@ -155,12 +167,7 @@ def main():
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
 
-    # For the current visual benchmark, always test the requested Tungnath scene.
-    if test_only:
-        topic, deity, message, category = ("तुंगनाथ मंदिर", "शिव", "तुंगनाथ महादेव के दिव्य हिमालयी धाम की भक्ति मन में शांति और शक्ति भरती है।", "shiv")
-    else:
-        topic, deity, message, category = random.choice(TOPICS)
-
+    topic, deity, message, category = random.choice(TOPICS)
     title = f"🙏 {topic} | भक्ति संदेश"
     try:
         generated_caption = gemini_text(f"Write a short devotional Hindi caption for a Reel about {topic}. Mention {deity}. Return only the caption.")
@@ -170,19 +177,19 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
-    image_prompt = f"""Create a COMPLETELY NEW photorealistic macro photograph of a real human hand resting palm-up on clean white paper, with realistic skin pores, palm creases, wrist, natural nails and exactly five separated fingers.
+    image_prompt = f"""Create a completely NEW photorealistic macro photograph of a real human hand resting palm-up on clean white paper, with realistic skin pores, palm creases, wrist, natural nails and exactly five separated fingers.
 
-Create an ORIGINAL dense handmade blue/indigo ballpoint-pen artwork directly on the skin. Cover about 90 percent of the visible skin and continue detailed artwork across the palm, wrist, thumb and ALL five fingers almost to every fingertip. Every finger must contain substantial fine artwork and must not be blank.
+The hand is covered by an ORIGINAL, extremely dense handmade blue/indigo ballpoint-pen pilgrimage-map drawing directly on the skin. Cover about 90 percent of the visible skin. Continue the artwork across the palm, wrist, thumb and ALL five fingers almost to every fingertip; every finger must contain substantial fine artwork and must not be blank.
 
-The drawing is a completely new miniature pilgrimage world for this scene: {scene}. Include the Tungnath Temple as one SMALL but recognizable ancient stone Shiva temple landmark, surrounded by Himalayan terrain, trails and tiny pilgrims. Keep the temple proportional and integrated into the dense map instead of making it huge.
+The artwork is one connected miniature pilgrimage world made of tiny contour lines, mountains, winding rivers and streams, bridges, long stairways, ghats, tiny temples and shrines, small houses, trees, animals and many tiny pilgrims. Use fine blue/indigo ballpoint hatching, cross-hatching and stippling with intricate handmade linework. Keep landmarks tiny, numerous and tightly packed. Theme: {scene}.
 
-Use extremely fine blue/indigo ballpoint hatching, cross-hatching, stippling, contour lines and tiny handmade linework. Pack many small details across the entire hand: mountain contours, streams, stone paths, steps, tiny shrines, small trees, rocks, animals and many tiny pilgrims.
+For the Shiva/Tungnath scene, make the Tungnath stone temple clearly recognizable as a small ancient Himalayan Kedarnath-style stone shrine, with a simple dark stone facade, compact sanctum, small entrance steps and snow-covered Himalayan peaks behind it. Keep the temple integrated into the tiny pilgrimage-map artwork rather than making it giant.
 
-Place 2-3 real blue/black ballpoint pens beside the hand on white paper. Make the final result look like a genuine macro photograph of an expert artist drawing a NEW Tungnath pilgrimage map directly on real skin.
+Place 2-3 real blue/black ballpoint pens beside the hand on the white paper. The result must look like a genuine close-up photograph of an expert pen artist who created a NEW drawing directly on a real hand.
 
-IMPORTANT: Generate a new image from text only. The repository reference image is NOT an input and must NOT be copied or reconstructed. Do not reproduce its exact hand artwork, landmarks, text, signs, composition, layout, or linework. The reference is only a human visual target for the general medium: dense blue ballpoint pilgrimage art on a real hand. Invent a fresh Tungnath-specific artwork.
+CRITICAL: This is a TEXT-TO-IMAGE generation. Do not reproduce any existing image. Invent a fresh hand composition and completely fresh artwork for the chosen pilgrimage scene. The desired medium is only dense blue ballpoint pen art on real skin; the actual map, landmarks, people, layout and linework must be newly invented.
 
-Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT create extra or malformed fingers, giant temple, giant faces, colored ink, logos, watermarks or large text. No blank fingers."""
+Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT create extra or malformed fingers, giant objects, giant faces, colored ink, logos, watermarks or large text. No blank fingers. No large single landmark dominating the hand."""
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
@@ -192,12 +199,12 @@ Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art
 
     if test_only:
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Qwen/Qwen-Image", "reference_used_as_input": False}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Qwen/Qwen-Image via ZeroGPU Space", "reference_used_as_input": False}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Qwen/Qwen-Image", "reference_used_as_input": False}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Qwen/Qwen-Image via ZeroGPU Space", "reference_used_as_input": False}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
