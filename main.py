@@ -1,4 +1,3 @@
-import io
 import json
 import os
 import random
@@ -15,7 +14,7 @@ from huggingface_hub import InferenceClient
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
 MUSIC = ROOT / "music"
-REFERENCE = ROOT / "assets" / "palm_reference.png"
+REFERENCE = ROOT / "palm_reference.jpg.jpg"
 WORK.mkdir(exist_ok=True)
 
 TOPICS = [
@@ -62,11 +61,7 @@ def gemini_text(prompt: str) -> str:
 
 def generate_kontext_image(prompt: str, output: Path):
     if not REFERENCE.exists():
-        raise RuntimeError(
-            "Missing reference image: assets/palm_reference.png. "
-            "Upload the user's palm-art reference image to this exact path before running the test."
-        )
-
+        raise RuntimeError(f"Missing reference image: {REFERENCE}")
     token = os.environ.get("HF_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
@@ -74,7 +69,6 @@ def generate_kontext_image(prompt: str, output: Path):
     client = InferenceClient(api_key=token, provider="auto")
     image_bytes = REFERENCE.read_bytes()
     last_error = None
-
     for attempt in range(3):
         try:
             result = client.image_to_image(
@@ -83,13 +77,12 @@ def generate_kontext_image(prompt: str, output: Path):
                 model="black-forest-labs/FLUX.1-Kontext-dev",
             )
             result.save(output)
-            print("Image generated with Hugging Face FLUX.1-Kontext-dev using the palm reference image.")
+            print("Image generated with Hugging Face FLUX.1-Kontext-dev using the uploaded palm reference.")
             return
         except Exception as exc:
             last_error = str(exc)
             print(f"Kontext attempt {attempt + 1}/3 failed: {last_error}")
             time.sleep(min(10 * (attempt + 1), 30))
-
     raise RuntimeError(f"FLUX.1-Kontext image generation failed: {last_error}")
 
 
@@ -171,15 +164,15 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
-    image_prompt = f"""Use the uploaded palm-art reference image as the PRIMARY visual reference. Preserve the same real human hand concept, realistic palm anatomy, wrist, five separated fingers, camera angle, white-paper setting and ballpoint-pen-on-skin medium.
+    image_prompt = f"""Use the uploaded palm-art reference image as the PRIMARY visual reference. Preserve the same real human hand concept, realistic palm anatomy, wrist, five separated fingers, camera angle, white-paper setting and blue ballpoint-pen-on-skin medium.
 
-Transform the hand into an extremely dense handmade blue/indigo ballpoint pilgrimage-map artwork, matching the reference's overall density and craftsmanship. The drawing must cover about 90 percent of the visible skin and continue across the palm, wrist, thumb and ALL five fingers almost to every fingertip. Do not leave fingers blank.
+Transform the hand into an extremely dense handmade blue/indigo ballpoint pilgrimage-map artwork matching the reference's density and craftsmanship. Cover about 90 percent of visible skin and continue the drawing across the palm, wrist, thumb and ALL five fingers almost to every fingertip. Every finger must contain substantial detailed artwork; no blank fingers.
 
-Fill the hand with one connected miniature map: Himalayan or regional terrain, contour lines, winding rivers and streams, bridges, long stairways, ghats, tiny temples and shrines, small houses, trees, animals and many tiny pilgrims. Use very fine blue/indigo ballpoint hatching, cross-hatching and stippling. Landmarks must stay tiny and numerous rather than becoming large icons. Theme: {scene}.
+Fill the hand with one connected miniature map: Himalayan or regional terrain, contour lines, winding rivers and streams, bridges, long stairways, ghats, tiny temples and shrines, small houses, trees, animals and many tiny pilgrims. Use very fine blue/indigo ballpoint hatching, cross-hatching and stippling. Landmarks must stay tiny and numerous. Theme: {scene}.
 
-Keep the result photorealistic: visible skin pores, palm creases, nails and natural hand anatomy. Keep 2-3 real blue/black ballpoint pens beside the hand on white paper. The final image should look like a real macro photograph of an expert artist drawing an intricate pilgrimage map directly on a real hand.
+Keep it photorealistic: skin pores, palm creases, nails and natural hand anatomy. Keep 2-3 real blue/black ballpoint pens beside the hand on white paper. The final image must look like a real macro photograph of an expert artist drawing an intricate pilgrimage map directly on a real hand.
 
-Do NOT turn the artwork into a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT remove the fingers, change the hand into an illustration, create extra fingers, malformed fingers, giant objects, giant faces, colored ink, logos, watermarks or large text. The reference image's visual composition and dense hand-coverage are more important than inventing a new composition."""
+Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT create extra or malformed fingers, giant objects, giant faces, colored ink, logos, watermarks or large text. Preserve the reference composition and dense hand coverage rather than inventing a different composition."""
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
