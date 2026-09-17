@@ -26,7 +26,6 @@ TOPICS = [
 
 
 def gemini_text(prompt: str) -> str:
-    """Use Gemini only for text; image generation is handled by Cloudflare FLUX."""
     key = os.environ["GEMINI_API_KEY"]
     models = ["gemini-2.5-flash-lite", "gemini-3-flash-preview"]
     last_error = None
@@ -49,7 +48,6 @@ def gemini_text(prompt: str) -> str:
 
 
 def generate_flux_image(prompt: str, output: Path):
-    """Generate the palm-art image with the same Cloudflare FLUX setup used by Project 27."""
     token = os.environ["CLOUDFLARE_API_TOKEN"]
     account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
     url = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/@cf/black-forest-labs/flux-1-schnell"
@@ -76,16 +74,9 @@ def generate_flux_image(prompt: str, output: Path):
 
 
 def make_fallback_devotional_music(category: str) -> Path:
-    """Create a short copyright-safe devotional instrumental bed when no local track is supplied.
-
-    This is only a test-safe fallback, not a Hindi vocal bhajan. Users can place licensed
-    category-named MP3/WAV/M4A tracks in music/ to use real songs.
-    """
     output = WORK / f"fallback_{category}.mp3"
     if output.exists() and output.stat().st_size > 0:
         return output
-
-    # Gentle drone + bell-like tones; generated locally by FFmpeg, no external music needed.
     filter_complex = (
         "sine=frequency=196:duration=10[a];"
         "sine=frequency=293.66:duration=10[b];"
@@ -103,7 +94,6 @@ def choose_music(category: str) -> Path:
     if files:
         matches = [p for p in files if category.lower() in p.stem.lower()]
         return random.choice(matches or files)
-
     print("No licensed track found in music/. Using generated devotional instrumental fallback for this test run.")
     return make_fallback_devotional_music(category)
 
@@ -118,17 +108,58 @@ def facebook_reel(video: Path, title: str, description: str):
     page = os.environ["FACEBOOK_PAGE_ID"]
     token = os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"]
     version = os.getenv("FACEBOOK_GRAPH_VERSION", "v26.0")
-    start = requests.post(f"https://graph.facebook.com/{version}/{page}/video_reels", data={"upload_phase": "start", "access_token": token}, timeout=60)
-    start.raise_for_status()
+
+    # First verify that the Page token can read the target Page. This gives a useful
+    # diagnostic instead of a generic 403 if the wrong Page ID/token was supplied.
+    verify = requests.get(
+        f"https://graph.facebook.com/{version}/{page}",
+        params={"fields": "id,name", "access_token": token},
+        timeout=60,
+    )
+    if not verify.ok:
+        raise RuntimeError(f"Facebook Page token/Page ID check failed ({verify.status_code}): {verify.text[:1200]}")
+
+    start = requests.post(
+        f"https://graph.facebook.com/{version}/{page}/video_reels",
+        data={"upload_phase": "start", "access_token": token},
+        timeout=60,
+    )
+    if not start.ok:
+        raise RuntimeError(f"Facebook Reel start failed ({start.status_code}): {start.text[:2000]}")
+
     info = start.json()
     video_id = info["video_id"]
     upload_url = info.get("upload_url") or f"https://rupload.facebook.com/video-upload/{version}/{video_id}"
     size = video.stat().st_size
     with video.open("rb") as fh:
-        upload = requests.post(upload_url, headers={"Authorization": f"OAuth {token}", "offset": "0", "file_size": str(size), "Content-Type": "application/octet-stream"}, data=fh, timeout=300)
-    upload.raise_for_status()
-    finish = requests.post(f"https://graph.facebook.com/{version}/{page}/video_reels", data={"upload_phase": "finish", "video_id": video_id, "video_state": "PUBLISHED", "title": title, "description": description, "access_token": token}, timeout=60)
-    finish.raise_for_status()
+        upload = requests.post(
+            upload_url,
+            headers={
+                "Authorization": f"OAuth {token}",
+                "offset": "0",
+                "file_size": str(size),
+                "Content-Type": "application/octet-stream",
+            },
+            data=fh,
+            timeout=300,
+        )
+    if not upload.ok:
+        raise RuntimeError(f"Facebook Reel upload failed ({upload.status_code}): {upload.text[:2000]}")
+
+    finish = requests.post(
+        f"https://graph.facebook.com/{version}/{page}/video_reels",
+        data={
+            "upload_phase": "finish",
+            "video_id": video_id,
+            "video_state": "PUBLISHED",
+            "title": title,
+            "description": description,
+            "access_token": token,
+        },
+        timeout=60,
+    )
+    if not finish.ok:
+        raise RuntimeError(f"Facebook Reel publish failed ({finish.status_code}): {finish.text[:2000]}")
     return finish.json()
 
 
