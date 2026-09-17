@@ -186,23 +186,15 @@ def main():
     scene = PALM_SCENES[category]
 
     image_prompt = f"""
-Create a premium photorealistic macro photograph of ONE real adult human hand, palm facing directly toward the camera, wrist fully visible, all five fingers and thumb clearly separated, complete hand fitting comfortably inside a vertical portrait frame. The hand rests naturally on clean white paper/tabletop with two or three real blue or black ballpoint pens beside it.
+Create a premium photorealistic macro photo of ONE real adult human hand, palm facing camera, wrist fully visible, all five fingers and thumb separated, full hand inside a vertical portrait frame. Hand rests on clean white paper with 2–3 real blue/black ballpoint pens beside it.
 
-REFERENCE STYLE TARGET: handmade dense blue ballpoint-pen pilgrimage map drawn directly on real human skin, like an expert pen artist has spent many hours covering the hand with extremely fine miniature linework. This must look physically drawn on skin, not digitally printed and not like a tattoo.
+STYLE: an expert pen artist has drawn a dense blue/indigo pilgrimage map directly on real skin. Artwork must begin at wrist and continue through the palm, thumb, and EVERY finger toward the fingertips. Every finger must visibly have dense fine linework; no mostly blank finger. Target about 90% hand coverage while preserving pores, creases, wrinkles and nails.
 
-CRITICAL HAND COVERAGE: the artwork MUST start at the wrist and continue continuously through the palm, thumb, and EACH OF THE FIVE FINGERS all the way toward the fingertips. Every finger must visibly contain dense fine blue-ink artwork. No finger may be mostly blank. The thumb must also be densely drawn. The central palm must be densely filled. Aim for roughly 90 percent visual coverage of the visible hand with fine connected pen linework while preserving realistic skin pores, creases and wrinkles.
+Pack hundreds of tiny connected hand-drawn details into one continuous map: mountain ridges, contour lines, rivers, streams, stairs, bridges, ghats, tiny temples/shrines, houses, trees, animals, pilgrims, paths, clouds, architecture and devotional scenes, with fine ballpoint hatching, stippling and cross-hatching. Follow finger anatomy so the map flows across the whole hand.
 
-CRITICAL ART STYLE: hundreds of tiny hand-drawn elements packed together into one continuous illustrated pilgrimage/cartographic scene: mountain ridges, contour lines, rivers, streams, stairs, bridges, ghats, tiny temples, shrines, houses, trees, animals, pilgrims, walking paths, clouds, architectural details, tiny devotional scenes and cross-hatching. Use very fine ballpoint strokes, stippling, hatching, parallel lines and natural variations in ink pressure. The linework must follow the anatomy of the fingers and palm and visually flow from wrist to palm and branch into every finger.
+Theme: {scene}. Any deity is only a tiny integrated scene, never a large portrait.
 
-The dominant visual impression must be DENSE BLUE/INDIGO BALLPOINT CARTOGRAPHY COVERING ALMOST THE ENTIRE HAND. Do not make a few large icons floating on empty skin. Do not leave large unmarked areas.
-
-Theme: {scene}
-
-Any deity depiction must be tiny and integrated into the pilgrimage map as one small scene, never a giant face or portrait.
-
-Photography: authentic real skin texture, visible pores and natural wrinkles under the ink, realistic fingernails, realistic shadows, premium macro photography, soft natural daylight, shallow depth of field, white surface, real physical pens near the hand.
-
-STRICTLY AVOID: blank fingers, blank palm, sparse icons, a few isolated symbols, giant deity portrait, giant face, tattoo, printed skin, sticker, decal, CGI, 3D render, cartoon, vector art, digital illustration, plastic hand, paper hand, painted hand, collage, poster, parchment, colored ink, red ink, green ink, large text, logo, watermark, extra fingers, missing fingers, fused fingers, deformed anatomy.
+Avoid: blank fingers/palm, sparse icons, giant faces, tattoo, printed skin, sticker, CGI, 3D, cartoon, vector, digital art, plastic/paper hand, colored ink, large text, logo, watermark, extra/fused/deformed fingers.
 """.strip()
 
     image = WORK / "palm_art.png"
@@ -218,7 +210,7 @@ STRICTLY AVOID: blank fingers, blank palm, sparse icons, a few isolated symbols,
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "music": music.name, "facebook": fb, "youtube_video_id": yt, "image_model": "black-forest-labs/flux.2-klein-4b"}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "black-forest-labs/flux.2-klein-4b"}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
