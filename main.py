@@ -14,7 +14,7 @@ from huggingface_hub import InferenceClient
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
 MUSIC = ROOT / "music"
-REFERENCE = ROOT / "palm_reference.jpg.jpg"  # Kept in repo for human visual reference only; NOT sent to the model.
+REFERENCE = ROOT / "palm_reference.jpg.jpg"  # Human visual reference only; NEVER sent to the model.
 WORK.mkdir(exist_ok=True)
 
 TOPICS = [
@@ -27,7 +27,7 @@ TOPICS = [
 
 PALM_SCENES = {
     "krishna": "Vrindavan and Mathura pilgrimage, Yamuna river, ancient ghats, Govardhan hill, cows, trees, tiny Krishna temples and many tiny pilgrims",
-    "shiv": "Himalayan Shiva pilgrimage, snowy mountains, winding mountain river, ancient Shiva temple, long stone stairs, bridges and many tiny pilgrims",
+    "shiv": "Tungnath Temple pilgrimage in the Garhwal Himalayas, the ancient stone Tungnath Shiva temple as a SMALL detailed landmark, steep Himalayan trail, snowy mountain peaks, alpine meadows, rocky slopes, winding mountain stream, stone steps, tiny pilgrims carrying backpacks, small bells and distant mountain shrines",
     "hanuman": "Ayodhya and Ram-Hanuman pilgrimage, river, forest, stone bridge, distant mountain, tiny temples and many tiny pilgrims",
     "ram": "Ayodhya and Ramayana pilgrimage, Sarayu river, ghats, forest paths, stone bridge, tiny temples, villages and many tiny pilgrims",
     "mata": "Himalayan Mata Rani pilgrimage, steep mountain valley, long stairway, shrine, temple flags, rocky terrain and many tiny devotees",
@@ -155,7 +155,12 @@ def main():
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
 
-    topic, deity, message, category = random.choice(TOPICS)
+    # For the current visual benchmark, always test the requested Tungnath scene.
+    if test_only:
+        topic, deity, message, category = ("तुंगनाथ मंदिर", "शिव", "तुंगनाथ महादेव के दिव्य हिमालयी धाम की भक्ति मन में शांति और शक्ति भरती है।", "shiv")
+    else:
+        topic, deity, message, category = random.choice(TOPICS)
+
     title = f"🙏 {topic} | भक्ति संदेश"
     try:
         generated_caption = gemini_text(f"Write a short devotional Hindi caption for a Reel about {topic}. Mention {deity}. Return only the caption.")
@@ -165,17 +170,19 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
-    image_prompt = f"""Create a completely NEW photorealistic macro photograph of a real human hand resting palm-up on clean white paper, with realistic skin pores, palm creases, wrist, natural nails and exactly five separated fingers.
+    image_prompt = f"""Create a COMPLETELY NEW photorealistic macro photograph of a real human hand resting palm-up on clean white paper, with realistic skin pores, palm creases, wrist, natural nails and exactly five separated fingers.
 
-The hand is covered by an ORIGINAL, extremely dense handmade blue/indigo ballpoint-pen pilgrimage-map drawing directly on the skin. Cover about 90 percent of the visible skin. Continue the artwork across the palm, wrist, thumb and ALL five fingers almost to every fingertip; every finger must contain substantial fine artwork and must not be blank.
+Create an ORIGINAL dense handmade blue/indigo ballpoint-pen artwork directly on the skin. Cover about 90 percent of the visible skin and continue detailed artwork across the palm, wrist, thumb and ALL five fingers almost to every fingertip. Every finger must contain substantial fine artwork and must not be blank.
 
-The artwork is one connected miniature pilgrimage world made of tiny contour lines, mountains, winding rivers and streams, bridges, long stairways, ghats, tiny temples and shrines, small houses, trees, animals and many tiny pilgrims. Use fine blue/indigo ballpoint hatching, cross-hatching and stippling with intricate handmade linework. Keep landmarks tiny, numerous and tightly packed. Theme: {scene}.
+The drawing is a completely new miniature pilgrimage world for this scene: {scene}. Include the Tungnath Temple as one SMALL but recognizable ancient stone Shiva temple landmark, surrounded by Himalayan terrain, trails and tiny pilgrims. Keep the temple proportional and integrated into the dense map instead of making it huge.
 
-Place 2-3 real blue/black ballpoint pens beside the hand on the white paper. The result must look like a genuine close-up photograph of an expert pen artist who created a NEW drawing directly on a real hand.
+Use extremely fine blue/indigo ballpoint hatching, cross-hatching, stippling, contour lines and tiny handmade linework. Pack many small details across the entire hand: mountain contours, streams, stone paths, steps, tiny shrines, small trees, rocks, animals and many tiny pilgrims.
 
-CRITICAL: This is a TEXT-TO-IMAGE generation. Do not reproduce any existing image. Invent a fresh hand composition and completely fresh artwork for the chosen pilgrimage scene. The desired medium is only dense blue ballpoint pen art on real skin; the actual map, landmarks, people, layout and linework must be newly invented.
+Place 2-3 real blue/black ballpoint pens beside the hand on white paper. Make the final result look like a genuine macro photograph of an expert artist drawing a NEW Tungnath pilgrimage map directly on real skin.
 
-Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT create extra or malformed fingers, giant objects, giant faces, colored ink, logos, watermarks or large text. No blank fingers. No large single landmark dominating the hand."""
+IMPORTANT: Generate a new image from text only. The repository reference image is NOT an input and must NOT be copied or reconstructed. Do not reproduce its exact hand artwork, landmarks, text, signs, composition, layout, or linework. The reference is only a human visual target for the general medium: dense blue ballpoint pilgrimage art on a real hand. Invent a fresh Tungnath-specific artwork.
+
+Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT create extra or malformed fingers, giant temple, giant faces, colored ink, logos, watermarks or large text. No blank fingers."""
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
