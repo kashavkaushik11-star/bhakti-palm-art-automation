@@ -105,9 +105,14 @@ def make_video(image: Path, music: Path, output: Path):
 
 
 def facebook_reel(video: Path, title: str, description: str):
-    page = os.environ["FACEBOOK_PAGE_ID"]
-    token = os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"]
+    page = os.environ["FACEBOOK_PAGE_ID"].strip()
+    token = os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"].strip()
     version = os.getenv("FACEBOOK_GRAPH_VERSION", "v26.0")
+
+    # Normalize accidental whitespace copied into the GitHub secret. This is
+    # especially important for the Authorization header used by rupload.
+    if token.startswith("OAuth "):
+        token = token[6:].strip()
 
     # First verify that the Page token can read the target Page. This gives a useful
     # diagnostic instead of a generic 403 if the wrong Page ID/token was supplied.
