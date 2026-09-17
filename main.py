@@ -149,7 +149,10 @@ def youtube_upload(video: Path, title: str, description: str):
 
 
 def main():
-    required = ["GEMINI_API_KEY", "HF_TOKEN", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
+    test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
+    required = ["GEMINI_API_KEY", "HF_TOKEN"]
+    if not test_only:
+        required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
@@ -180,7 +183,7 @@ Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art
     music = choose_music(category)
     make_video(image, music, video)
 
-    if os.getenv("TEST_ONLY", "false").lower() == "true":
+    if test_only:
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
         print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "black-forest-labs/FLUX.1-Kontext-dev", "reference": str(REFERENCE)}, ensure_ascii=False))
         return
