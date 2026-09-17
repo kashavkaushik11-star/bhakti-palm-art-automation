@@ -58,16 +58,15 @@ def gemini_text(prompt: str) -> str:
 
 
 def generate_gemini_image(prompt: str, output: Path):
-    """Generate the palm artwork with Nano Banana 2 (Gemini 3.1 Flash Image).
-
-    This replaces FLUX.2 for the artwork because Gemini 3.1 Flash Image supports
-    2K/4K output, stronger multimodal composition and Google Image Search grounding.
-    """
+    """Generate the palm artwork with Nano Banana 2 (Gemini 3.1 Flash Image)."""
     key = os.environ["GEMINI_API_KEY"]
     client = genai.Client(api_key=key)
     config = types.GenerateContentConfig(
         response_modalities=["IMAGE"],
-        response_format={"image": {"aspect_ratio": "9:16", "image_size": "2K"}},
+        image_config=types.ImageConfig(
+            aspect_ratio="9:16",
+            image_size="2K",
+        ),
         tools=[
             types.Tool(
                 google_search=types.GoogleSearch(
@@ -185,8 +184,6 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
-    # Narrative prompt based on Google's image-prompt guidance: describe the actual
-    # scene and composition instead of relying on disconnected keyword lists.
     image_prompt = f"""
 Use Google Image Search to study the visual language of real handmade blue-ballpoint palm-art photographs and miniature pilgrimage-map drawings on human hands. Then create an ORIGINAL photograph, not a copy of any single reference.
 
