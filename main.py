@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import random
@@ -6,10 +7,10 @@ import time
 from pathlib import Path
 
 import requests
-from huggingface_hub import InferenceClient
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
@@ -55,37 +56,56 @@ def gemini_text(prompt: str) -> str:
     raise RuntimeError(f"Gemini text generation failed: {last_error}")
 
 
-def generate_hf_image(prompt: str, output: Path):
-    """Generate the palm artwork through Hugging Face Inference Providers."""
-    token = os.environ["HF_TOKEN"]
-    client = InferenceClient(api_key=token, provider="auto")
-    negative = (
-        "blank fingers, blank palm, sparse drawing, few icons, giant deity portrait, giant face, "
-        "tattoo, printed skin, sticker, digital graphic, CGI, cartoon, 3D render, illustration, "
-        "plastic hand, deformed hand, extra fingers, missing fingers, duplicated fingers, "
-        "colored ink, red ink, green ink, text, logo, watermark, collage, poster, parchment, "
-        "paper hand, flat vector art"
-    )
+def _save_nvidia_image(data: dict, output: Path):
+    artifacts = data.get("artifacts") or []
+    if not artifacts or not artifacts[0].get("base64"):
+        raise RuntimeError(f"NVIDIA response did not contain image artifacts: {json.dumps(data)[:2000]}")
+    output.write_bytes(base64.b64decode(artifacts[0]["base64"]))
+
+
+def _make_portrait_canvas(output: Path):
+    with Image.open(output) as src:
+        src = src.convert("RGB")
+        target_w, target_h = 1080, 1920
+        scale = min(target_w / src.width, target_h / src.height)
+        resized = src.resize((round(src.width * scale), round(src.height * scale)), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGB", (target_w, target_h), "white")
+        canvas.paste(resized, ((target_w - resized.width) // 2, (target_h - resized.height) // 2))
+        canvas.save(output, quality=95)
+
+
+def generate_nvidia_image(prompt: str, output: Path):
+    """Generate palm artwork through NVIDIA's hosted FLUX.2 Klein 4B API."""
+    token = os.environ["NVIDIA_API_KEY"].strip()
+    url = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b"
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "Content-Type": "application/json"}
+    payload = {
+        "mode": "Image Generation",
+        "prompt": prompt,
+        "width": 832,
+        "height": 1248,
+        "steps": 4,
+        "seed": random.randint(1, 2_147_483_647),
+        "samples": 1,
+    }
     last_error = None
     for attempt in range(3):
         try:
-            image = client.text_to_image(
-                prompt=prompt,
-                model="black-forest-labs/FLUX.1-Krea-dev",
-                width=768,
-                height=1360,
-                guidance_scale=4.0,
-                num_inference_steps=28,
-                negative_prompt=negative,
-            )
-            image.save(output)
-            print("Image generated with Hugging Face FLUX.1-Krea-dev")
-            return
+            r = requests.post(url, headers=headers, json=payload, timeout=300)
+            if r.ok:
+                _save_nvidia_image(r.json(), output)
+                _make_portrait_canvas(output)
+                print("Image generated with NVIDIA FLUX.2 Klein 4B")
+                return
+            last_error = f"HTTP {r.status_code}: {r.text[:2000]}"
+            if r.status_code == 422 and payload["width"] != 1024:
+                payload["width"], payload["height"] = 1024, 1024
+            elif r.status_code not in (429, 500, 502, 503, 504):
+                break
         except Exception as exc:
             last_error = str(exc)
-            print(f"Hugging Face image attempt {attempt + 1}/3 failed: {last_error}")
-            time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"Hugging Face palm image generation failed: {last_error}")
+        time.sleep(min(10 * (attempt + 1), 30))
+    raise RuntimeError(f"NVIDIA FLUX.2 Klein image generation failed: {last_error}")
 
 
 def make_fallback_devotional_music(category: str) -> Path:
@@ -157,7 +177,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 
 def main():
-    required = ["GEMINI_API_KEY", "HF_TOKEN", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
+    required = ["GEMINI_API_KEY", "NVIDIA_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
@@ -173,13 +193,13 @@ def main():
     scene = PALM_SCENES[category]
 
     image_prompt = f"""
-Create a photorealistic macro photograph of ONE real adult human hand, palm facing the camera, wrist fully visible, five fingers and thumb clearly separated, straight-on composition, vertical 9:16. The hand is resting on a clean white tabletop with two or three real blue or black ballpoint pens beside it.
+Create a photorealistic macro photograph of ONE real adult human hand, palm facing the camera, wrist fully visible, five fingers and thumb clearly separated, straight-on composition, portrait 2:3 with the complete hand fitting comfortably inside the frame. The hand is resting on a clean white tabletop with two or three real blue or black ballpoint pens beside it.
 
 The entire visible hand is a handmade blue-ballpoint-pen artwork. An expert artist has spent many hours drawing an extraordinarily dense miniature devotional pilgrimage map directly on the skin. The artwork begins on the wrist and continues without interruption through the palm, thumb and ALL FIVE FINGERS. Do not leave blank fingers or large blank skin areas.
 
-Every finger and the thumb must contain connected fine blue-ink linework: tiny mountain ridges, contour lines, rivers, stairs, bridges, ghats, miniature temples, shrines, trees, animals, pilgrims, paths, clouds and architectural details. The palm must be densely filled too. Use hundreds of tiny elements, fine cross-hatching, stippling, parallel pen strokes, tiny buildings and natural variation in ballpoint pressure. The natural skin pores, creases and wrinkles must remain visible under the ink so the result looks physically drawn on living skin.
+Every finger and the thumb MUST be covered with connected fine blue-ink linework from base to fingertip: tiny mountain ridges, contour lines, rivers, stairs, bridges, ghats, miniature temples, shrines, trees, animals, pilgrims, paths, clouds and architectural details. The palm MUST be densely filled too. Use hundreds of tiny elements, fine cross-hatching, stippling, parallel pen strokes, tiny buildings and natural variation in ballpoint pressure. The natural skin pores, creases and wrinkles must remain visible under the ink so the result looks physically drawn on living skin.
 
-This is a continuous illustrated pilgrimage map, not separate icons. The map should visually flow from wrist to palm and then branch naturally into every finger. The dominant visual impression is dense blue/indigo ballpoint cartography covering almost the whole hand.
+This is a continuous illustrated pilgrimage map, not separate icons. The map must visually flow from wrist to palm and then branch naturally into every finger. The dominant visual impression is dense blue/indigo ballpoint cartography covering almost the whole hand. The five fingers must look artistically drawn, not empty skin.
 
 Theme for this image: {scene}
 
@@ -192,18 +212,18 @@ Do NOT create a tattoo, printed graphic, sticker, CGI render, cartoon, vector ar
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
-    generate_hf_image(image_prompt, image)
+    generate_nvidia_image(image_prompt, image)
     music = choose_music(category)
     make_video(image, music, video)
 
     if os.getenv("TEST_ONLY", "false").lower() == "true":
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "black-forest-labs/FLUX.1-Krea-dev"}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "black-forest-labs/flux.2-klein-4b"}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "music": music.name, "facebook": fb, "youtube_video_id": yt, "image_model": "black-forest-labs/FLUX.1-Krea-dev"}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "music": music.name, "facebook": fb, "youtube_video_id": yt, "image_model": "black-forest-labs/flux.2-klein-4b"}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
