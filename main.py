@@ -25,11 +25,11 @@ TOPICS = [
 ]
 
 PALM_SCENES = {
-    "krishna": "A dense miniature Vrindavan scene across the palm: Krishna with flute, Radha, Yamuna, cows, kadamba trees, temples and tiny devotees.",
-    "shiv": "A dense miniature Shiva pilgrimage scene across the palm: Mount Kailash, Shiva, Parvati, Ganga, Nandi, trishul, Kedarnath temple, snowy mountains and pilgrims.",
-    "hanuman": "A dense miniature Hanuman-Ram story across the palm: Hanuman, Shri Ram, Ayodhya temple, forest, Sanjeevani mountain, devotees and sacred landscape.",
-    "ram": "A dense miniature Ramayana pilgrimage scene across the palm: Ram, Sita, Lakshman, Hanuman, Ayodhya temple, forest, river, bridge and tiny devotees.",
-    "mata": "A dense miniature Mata Rani pilgrimage scene across the palm: Durga, mountain shrine, temple, devotees, sacred flags, jyoti and Himalayan scenery.",
+    "krishna": "A continuous Vrindavan devotional panorama: Krishna playing flute, Radha, Yamuna river, cows, kadamba trees, Govardhan hills, ghats, small temples and many tiny devotees.",
+    "shiv": "A continuous Shiva pilgrimage panorama: Mount Kailash, Shiva and Parvati, Ganga, Nandi, trishul, Kedarnath-style temple, snowy Himalayas, pilgrims, mountain paths and sacred ghats.",
+    "hanuman": "A continuous Hanuman-Ram devotional panorama: Hanuman, Shri Ram, Ayodhya temple, forest, Sanjeevani mountain, river, bridge, tiny devotees and pilgrimage paths.",
+    "ram": "A continuous Ramayana panorama: Ram, Sita, Lakshman, Hanuman, Ayodhya temple, forest, river, bridge, ghats, mountains, trees and tiny devotees.",
+    "mata": "A continuous Mata Rani pilgrimage panorama: Durga/Mata Rani, mountain shrine, temple, Himalayan path, devotees, flags, bells, jyoti, valleys and sacred landscape.",
 }
 
 
@@ -58,25 +58,41 @@ def gemini_text(prompt: str) -> str:
 def generate_flux_image(prompt: str, output: Path):
     token = os.environ["CLOUDFLARE_API_TOKEN"]
     account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    last_error = None
+
+    # FLUX.2 Dev is Cloudflare's newer high-fidelity model and supports portrait
+    # dimensions through its multipart REST interface. Keep Schnell as a fallback.
     models = [
-        ("@cf/black-forest-labs/flux-1-dev", 28),
+        ("@cf/black-forest-labs/flux-2-dev", 28),
         ("@cf/black-forest-labs/flux-1-schnell", 8),
     ]
-    last_error = None
     for model, steps in models:
         url = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
-        payload = {"prompt": prompt[:1900], "steps": steps}
         for attempt in range(3):
-            r = requests.post(
-                url,
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json=payload,
-                timeout=240,
-            )
-            if r.ok:
-                content_type = r.headers.get("content-type", "")
-                if "application/json" in content_type:
-                    data = r.json()
+            try:
+                if model.endswith("flux-2-dev"):
+                    response = requests.post(
+                        url,
+                        headers={"Authorization": f"Bearer {token}"},
+                        files={
+                            "prompt": (None, prompt[:2048]),
+                            "steps": (None, str(steps)),
+                            "width": (None, "1024"),
+                            "height": (None, "1536"),
+                            "guidance": (None, "4.0"),
+                        },
+                        timeout=360,
+                    )
+                else:
+                    response = requests.post(
+                        url,
+                        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                        json={"prompt": prompt[:2048], "steps": steps},
+                        timeout=300,
+                    )
+
+                if response.ok:
+                    data = response.json()
                     image = data.get("result", {}).get("image")
                     if image:
                         output.write_bytes(base64.b64decode(image))
@@ -84,14 +100,13 @@ def generate_flux_image(prompt: str, output: Path):
                         return
                     last_error = str(data)
                 else:
-                    output.write_bytes(r.content)
-                    print(f"Image generated with {model}")
-                    return
-            else:
-                last_error = r.text
-                if r.status_code not in (429, 500, 502, 503, 504):
-                    break
-            time.sleep(min(5 * (attempt + 1), 20))
+                    last_error = response.text
+                    if response.status_code not in (429, 500, 502, 503, 504):
+                        break
+            except Exception as exc:
+                last_error = str(exc)
+            time.sleep(min(8 * (attempt + 1), 24))
+
     raise RuntimeError(f"Cloudflare FLUX image generation failed: {last_error}")
 
 
@@ -208,18 +223,15 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
-    # Keep the entire prompt compact enough that the important style constraints are
-    # not cut off by the model API. The previous prompt was too long and its final
-    # negative constraints were being truncated.
     image_prompt = f"""
-Photorealistic macro photograph of ONE real human open palm and wrist, front-facing, vertical portrait.
-The palm is completely covered with an extremely dense, intricate BLUE/INDIGO BALLPOINT-PEN illustration drawn directly on the real skin, matching premium handmade palm-art reference photography.
+Ultra-realistic professional macro photograph of ONE real human open palm and wrist, palm facing camera, portrait composition, hand centered and filling most of the frame.
+The entire hand is a MASTERPIECE of extremely dense blue/indigo BALLPOINT PEN HAND-DRAWING physically drawn directly on the skin. Recreate the visual language of premium real palm-art reference photography: thousands of tiny pen strokes, fine cross-hatching, stippling, miniature line-art scenes, realistic pen pressure and imperfect handmade strokes.
 {scene}
-Every finger and the whole palm must contain continuous miniature scenes: tiny mountains, temples, people, trees, rivers and devotional details. No empty palm areas. Thousands of fine pen strokes, cross-hatching and stippling. Real skin pores, wrinkles and natural hand texture remain visible underneath the ink. Anatomically correct five-finger hand.
-Clean white tabletop/background. A few real blue and black ballpoint pens naturally placed around the hand edges. Premium studio macro photography, sharp focus, realistic shadows, natural soft light, extremely high detail.
-IMPORTANT: this must look like a REAL PHOTOGRAPH of artwork physically drawn with a blue ballpoint pen on skin, NOT a digital illustration, tattoo, sticker, vector, cartoon or CGI.
-NO floating deity, NO 3D figure emerging from the palm, NO isolated symbols, NO random icons, NO large empty skin areas, NO colored painting, NO black-only ink, NO parchment, NO beige paper hand, NO collage panels, NO border, NO watermark, NO logo, NO large text or labels.
-The entire palm should read as one connected devotional story/map artwork, like a handcrafted masterpiece.
+CRITICAL COMPOSITION: the drawing is ONE CONNECTED CONTINUOUS PANORAMA from wrist to palm and continuing naturally across ALL FIVE FINGERS and thumb. Cover about 90 percent of visible skin with connected artwork. Every finger must contain detailed landscape/architecture/people/foliage, not one isolated icon. The palm must be packed with layered tiny temples, mountains, rivers, trees, pilgrims, paths and devotional storytelling. Very little untouched skin.
+The ink follows the natural creases and contours of the hand. Real skin pores, fine wrinkles and natural texture remain visible beneath the blue ink. Anatomically correct human hand, five fingers, realistic proportions.
+White paper tabletop, a few real blue and black ballpoint pens around the edges, soft natural studio light, realistic shadows, shallow depth of field, extremely sharp macro detail, high-end photography.
+ABSOLUTELY NOT: tattoo, sticker, printed graphic, digital painting, CGI, 3D object, floating deity, deity emerging from palm, isolated symbols, sparse icons, empty palm, blank fingers, colored paint, black ink, parchment, paper hand, collage, panels, borders, watermark, logo, large text.
+The final image must look like a real photograph of an artist who spent hours drawing a dense devotional miniature world with a blue ballpoint pen directly on a person's hand.
 """.strip()
 
     image = WORK / "palm_art.png"
