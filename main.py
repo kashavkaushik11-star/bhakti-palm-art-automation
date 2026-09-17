@@ -10,7 +10,6 @@ import requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
@@ -59,35 +58,42 @@ def gemini_text(prompt: str) -> str:
     raise RuntimeError(f"Gemini text generation failed: {last_error}")
 
 
-def _save_nvidia_image(data: dict, output: Path):
-    artifacts = data.get("artifacts") or []
-    if not artifacts or not artifacts[0].get("base64"):
-        raise RuntimeError(f"NVIDIA response did not contain image artifacts: {json.dumps(data)[:2000]}")
-    output.write_bytes(base64.b64decode(artifacts[0]["base64"]))
-
-
-def generate_nvidia_image(prompt: str, output: Path):
-    token = os.environ["NVIDIA_API_KEY"].strip()
-    url = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b"
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "Content-Type": "application/json"}
-    if len(prompt) > 780:
-        prompt = prompt[:780]
-    payload = {"prompt": prompt, "width": 752, "height": 1392, "steps": 4, "seed": random.randint(1, 2_147_483_647), "samples": 1}
+def generate_openrouter_image(prompt: str, output: Path):
+    token = os.environ["OPENROUTER_API_KEY"].strip()
+    model = os.getenv("OPENROUTER_IMAGE_MODEL", "bytedance-seed/seedream-4.5:free").strip()
+    url = "https://openrouter.ai/api/v1/images"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "X-Title": "Bhakti Palm Art Automation",
+    }
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "aspect_ratio": "9:16",
+        "resolution": "2K",
+        "n": 1,
+    }
     last_error = None
     for attempt in range(3):
         try:
             r = requests.post(url, headers=headers, json=payload, timeout=300)
             if r.ok:
-                _save_nvidia_image(r.json(), output)
-                print("Image generated with NVIDIA FLUX.2 Klein 4B")
-                return
-            last_error = f"HTTP {r.status_code}: {r.text[:2000]}"
+                data = r.json()
+                images = data.get("data") or []
+                if images and images[0].get("b64_json"):
+                    output.write_bytes(base64.b64decode(images[0]["b64_json"]))
+                    cost = (data.get("usage") or {}).get("cost")
+                    print(f"Image generated with OpenRouter model: {model}; reported cost={cost}")
+                    return
+                raise RuntimeError(f"OpenRouter response did not contain image data: {json.dumps(data)[:2000]}")
+            last_error = f"HTTP {r.status_code}: {r.text[:3000]}"
             if r.status_code not in (429, 500, 502, 503, 504):
                 break
         except Exception as exc:
             last_error = str(exc)
         time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"NVIDIA FLUX.2 Klein image generation failed: {last_error}")
+    raise RuntimeError(f"OpenRouter image generation failed: {last_error}")
 
 
 def make_fallback_devotional_music(category: str) -> Path:
@@ -153,7 +159,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 
 def main():
-    required = ["GEMINI_API_KEY", "NVIDIA_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
+    required = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
@@ -168,22 +174,30 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
-    image_prompt = f"Realistic macro photo of one real human hand, palm facing camera, wrist visible, five fingers and thumb separated, full hand in 9:16. White paper with 2-3 blue/black ballpoint pens. Dense handmade blue ballpoint pilgrimage map drawn directly on skin from wrist across palm, thumb and ALL five fingers to fingertips; every finger richly filled, about 90% coverage. Tiny connected mountains, rivers, temples, stairs, bridges, houses, trees and pilgrims with fine hatching. Theme: {scene}. Real pores and nails. No blank fingers, tattoo, CGI, cartoon, colored ink, text, logo or malformed fingers."
+    image_prompt = f"""Photorealistic macro photograph of one real human hand on white paper, palm facing the camera, wrist visible, five fingers and thumb clearly separated, full hand filling a vertical 9:16 composition. Place 2-3 real blue and black ballpoint pens beside the hand.
+
+The hand is the artwork surface: create a dense, handmade blue/indigo ballpoint-pen pilgrimage map drawn directly across the entire palm, wrist, thumb and ALL five fingers, continuing naturally almost to every fingertip. Target about 90 percent skin coverage with intricate fine linework. Every finger must contain substantial detailed artwork, not empty skin.
+
+The connected miniature map contains layered Himalayan/mountain terrain, contour lines, winding rivers and streams, bridges, long stairways, ghats, tiny temples and shrines, small houses, trees, animals and many tiny pilgrims. Use fine hatching, cross-hatching and stippling like an expert real ballpoint artist. Keep all landmarks tiny, numerous and integrated into one continuous travel/pilgrimage map. Theme: {scene}.
+
+Preserve realistic skin pores, palm creases, nails and natural hand anatomy. The result must look like a real photograph of an intricate blue ballpoint drawing made by hand on skin, with pens and white paper visible around it.
+
+Do not make it a tattoo, sticker, printed glove, CGI, 3D render, cartoon, vector illustration, sparse symbols, giant objects, giant face, blank fingers, malformed fingers, extra fingers, colored ink, logo, watermark or large text."""
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
-    generate_nvidia_image(image_prompt, image)
+    generate_openrouter_image(image_prompt, image)
     music = choose_music(category)
     make_video(image, music, video)
 
     if os.getenv("TEST_ONLY", "false").lower() == "true":
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "black-forest-labs/flux.2-klein-4b"}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": os.getenv("OPENROUTER_IMAGE_MODEL", "bytedance-seed/seedream-4.5:free")}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "black-forest-labs/flux.2-klein-4b"}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": os.getenv("OPENROUTER_IMAGE_MODEL", "bytedance-seed/seedream-4.5:free")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
