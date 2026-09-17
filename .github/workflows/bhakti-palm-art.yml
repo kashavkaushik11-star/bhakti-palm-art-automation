@@ -2,6 +2,12 @@ name: Bhakti Palm Art Automation
 
 on:
   workflow_dispatch:
+    inputs:
+      test_only:
+        description: 'Generate image/video for checking only (no Facebook/YouTube post)'
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '30 5 * * *'
     - cron: '30 8 * * *'
@@ -35,4 +41,15 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          TEST_ONLY: ${{ inputs.test_only || false }}
         run: python main.py
+
+      - name: Upload test media
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bhakti-palm-art-test
+          path: |
+            work/palm_art.png
+            work/bhakti_reel.mp4
+          retention-days: 3
