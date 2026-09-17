@@ -71,7 +71,10 @@ def generate_gemini_image(prompt: str, output: Path):
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_modalities=["IMAGE"],
-                    response_format={"image": {"aspect_ratio": "9:16", "image_size": "2K"}},
+                    image_config=types.ImageConfig(
+                        aspect_ratio="9:16",
+                        image_size="2K",
+                    ),
                 ),
             )
             for part in response.parts:
