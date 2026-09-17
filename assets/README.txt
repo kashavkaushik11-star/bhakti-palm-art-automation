@@ -1,1 +1,0 @@
-The palm-art reference image used by the FLUX.1 Kontext test is stored as assets/palm_reference.png.
