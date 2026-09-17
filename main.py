@@ -1,4 +1,3 @@
-import base64
 import json
 import os
 import random
@@ -7,8 +6,7 @@ import time
 from pathlib import Path
 
 import requests
-from google import genai
-from google.genai import types
+from huggingface_hub import InferenceClient
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -57,47 +55,37 @@ def gemini_text(prompt: str) -> str:
     raise RuntimeError(f"Gemini text generation failed: {last_error}")
 
 
-def generate_gemini_image(prompt: str, output: Path):
-    """Generate the palm artwork with Nano Banana 2 (Gemini 3.1 Flash Image)."""
-    key = os.environ["GEMINI_API_KEY"]
-    client = genai.Client(api_key=key)
-    config = types.GenerateContentConfig(
-        response_modalities=["IMAGE"],
-        image_config=types.ImageConfig(
-            aspect_ratio="9:16",
-            image_size="2K",
-        ),
-        tools=[
-            types.Tool(
-                google_search=types.GoogleSearch(
-                    search_types=types.SearchTypes(
-                        image_search=types.ImageSearch(),
-                        web_search=types.WebSearch(),
-                    )
-                )
-            )
-        ],
+def generate_hf_image(prompt: str, output: Path):
+    """Generate the palm artwork through Hugging Face Inference Providers."""
+    token = os.environ["HF_TOKEN"]
+    client = InferenceClient(api_key=token, provider="auto")
+    negative = (
+        "blank fingers, blank palm, sparse drawing, few icons, giant deity portrait, giant face, "
+        "tattoo, printed skin, sticker, digital graphic, CGI, cartoon, 3D render, illustration, "
+        "plastic hand, deformed hand, extra fingers, missing fingers, duplicated fingers, "
+        "colored ink, red ink, green ink, text, logo, watermark, collage, poster, parchment, "
+        "paper hand, flat vector art"
     )
-
     last_error = None
     for attempt in range(3):
         try:
-            response = client.models.generate_content(
-                model="gemini-3.1-flash-image",
-                contents=prompt,
-                config=config,
+            image = client.text_to_image(
+                prompt=prompt,
+                model="black-forest-labs/FLUX.1-Krea-dev",
+                width=768,
+                height=1360,
+                guidance_scale=4.0,
+                num_inference_steps=28,
+                negative_prompt=negative,
             )
-            for part in response.parts:
-                if part.inline_data is not None:
-                    image = part.as_image()
-                    image.save(output)
-                    print("Image generated with Gemini 3.1 Flash Image (Nano Banana 2)")
-                    return
-            last_error = "Gemini returned no image part."
+            image.save(output)
+            print("Image generated with Hugging Face FLUX.1-Krea-dev")
+            return
         except Exception as exc:
             last_error = str(exc)
-        time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"Gemini Nano Banana image generation failed: {last_error}")
+            print(f"Hugging Face image attempt {attempt + 1}/3 failed: {last_error}")
+            time.sleep(min(10 * (attempt + 1), 30))
+    raise RuntimeError(f"Hugging Face palm image generation failed: {last_error}")
 
 
 def make_fallback_devotional_music(category: str) -> Path:
@@ -169,7 +157,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 
 def main():
-    required = ["GEMINI_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
+    required = ["GEMINI_API_KEY", "HF_TOKEN", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
@@ -185,35 +173,37 @@ def main():
     scene = PALM_SCENES[category]
 
     image_prompt = f"""
-Use Google Image Search to study the visual language of real handmade blue-ballpoint palm-art photographs and miniature pilgrimage-map drawings on human hands. Then create an ORIGINAL photograph, not a copy of any single reference.
+Create a photorealistic macro photograph of ONE real adult human hand, palm facing the camera, wrist fully visible, five fingers and thumb clearly separated, straight-on composition, vertical 9:16. The hand is resting on a clean white tabletop with two or three real blue or black ballpoint pens beside it.
 
-Show one anatomically correct adult human hand, palm facing the camera, wrist visible, five fingers and thumb, photographed straight-on as a premium macro photograph on a clean white tabletop. The hand itself is the artwork: a skilled artist has spent many hours physically drawing an extraordinarily dense miniature devotional pilgrimage world directly onto the skin with a blue and indigo ballpoint pen.
+The entire visible hand is a handmade blue-ballpoint-pen artwork. An expert artist has spent many hours drawing an extraordinarily dense miniature devotional pilgrimage map directly on the skin. The artwork begins on the wrist and continues without interruption through the palm, thumb and ALL FIVE FINGERS. Do not leave blank fingers or large blank skin areas.
 
-The drawing should behave like one continuous illustrated map. It starts on the wrist, travels through the palm, follows the natural creases, continues into the thumb and spreads across every finger. Almost every visible part of the skin is filled with connected fine linework. There are hundreds of tiny visual elements rather than a single large subject: mountain ridges, winding rivers, stairs, bridges, ghats, tiny temples, shrines, trees, animals, pilgrims, paths, clouds and small devotional scenes. Use fine cross-hatching, stippling, parallel contour lines, tiny architectural details and natural variation in ballpoint pressure. Keep real skin pores, creases and wrinkles visible underneath the ink so it looks genuinely hand-drawn on living skin.
+Every finger and the thumb must contain connected fine blue-ink linework: tiny mountain ridges, contour lines, rivers, stairs, bridges, ghats, miniature temples, shrines, trees, animals, pilgrims, paths, clouds and architectural details. The palm must be densely filled too. Use hundreds of tiny elements, fine cross-hatching, stippling, parallel pen strokes, tiny buildings and natural variation in ballpoint pressure. The natural skin pores, creases and wrinkles must remain visible under the ink so the result looks physically drawn on living skin.
 
-{scene}
+This is a continuous illustrated pilgrimage map, not separate icons. The map should visually flow from wrist to palm and then branch naturally into every finger. The dominant visual impression is dense blue/indigo ballpoint cartography covering almost the whole hand.
 
-The deity-related scene is only a small detail inside this miniature landscape; NEVER make a giant deity portrait or giant face. The dominant visual impression must be an extremely dense blue-ink pilgrimage map covering the whole hand from wrist through all fingers. The hand should look like a real photograph of an artist's finished ballpoint masterpiece, not an AI illustration.
+Theme for this image: {scene}
 
-Composition: vertical 9:16, hand large in frame, realistic anatomy, natural fingers, shallow macro depth of field, soft daylight, realistic shadows. Place two or three real blue/black ballpoint pens casually near the hand on the white surface. Blue and indigo ink only.
+Any deity depiction must be tiny and embedded as one small scene inside the map. Never create a giant deity portrait or giant face.
 
-Do not turn the drawing into a tattoo, printed skin, sticker, digital graphic, CGI, cartoon, 3D object, sparse icons, isolated symbols, a large central portrait, blank fingers, large blank palm areas, colored painting, parchment, paper hand, collage, poster, border, logo or watermark. Do not add large text.
+Lighting and photography: premium realistic macro photography, soft natural daylight, realistic skin texture, realistic shadows, shallow depth of field, white tabletop, authentic physical pens near the hand. Blue and indigo ink only.
+
+Do NOT create a tattoo, printed graphic, sticker, CGI render, cartoon, vector art, 3D hand, painted hand, plastic skin, paper hand, collage, poster, parchment, sparse symbols, isolated icons, giant central deity, blank fingers, blank palm, large text, logo or watermark.
 """.strip()
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
-    generate_gemini_image(image_prompt, image)
+    generate_hf_image(image_prompt, image)
     music = choose_music(category)
     make_video(image, music, video)
 
     if os.getenv("TEST_ONLY", "false").lower() == "true":
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "gemini-3.1-flash-image"}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "black-forest-labs/FLUX.1-Krea-dev"}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "music": music.name, "facebook": fb, "youtube_video_id": yt, "image_model": "gemini-3.1-flash-image"}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "music": music.name, "facebook": fb, "youtube_video_id": yt, "image_model": "black-forest-labs/FLUX.1-Krea-dev"}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
