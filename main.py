@@ -184,13 +184,13 @@ def main():
     scene = PALM_SCENES[category]
 
     image_prompt = f"""
-Photorealistic real adult hand, palm facing camera, wrist visible, five fingers and thumb separated, full hand in 9:16 frame. White paper, 2-3 real blue/black ballpoint pens.
+Photorealistic close-up photo of one human hand, palm facing camera, wrist visible, five fingers and thumb separated, full hand in a 9:16 portrait frame. White paper and 2-3 real blue/black ballpoint pens beside the hand.
 
-Dense handmade blue/indigo ballpoint pilgrimage map drawn on skin, not tattoo or print. Start at wrist and cover palm, thumb and ALL five fingers to fingertips. Every finger densely filled, no blank fingers. About 90% coverage, realistic pores, creases and nails.
+Dense handmade blue/indigo ballpoint illustration covers the palm area and continues naturally from the wrist across the thumb and all five fingers almost to the fingertips. Every finger has rich fine linework and tiny details. Preserve realistic hand texture, creases and nails.
 
-Tiny connected mountains, contours, rivers, stairs, bridges, ghats, temples, shrines, houses, trees, animals and pilgrims; fine hatching and stippling. Theme: Ram-Hanuman pilgrimage.
+Create one connected miniature pilgrimage map: mountains, contour lines, rivers, streams, stairs, bridges, ghats, tiny temples, shrines, houses, trees, animals and pilgrims, using fine hatching, stippling and cross-hatching. Theme: {scene}. Keep the devotional scene tiny and integrated into the map.
 
-Avoid blank areas, sparse icons, large faces, tattoo, CGI, cartoon, vector, colored ink, text, logo, watermark, malformed fingers.
+No blank fingers, sparse symbols, giant face, tattoo, sticker, CGI, 3D, cartoon, vector, colored ink, large text, logo, watermark or malformed fingers.
 """.strip()
 
     image = WORK / "palm_art.png"
