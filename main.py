@@ -1,4 +1,4 @@
-import base64
+import io
 import json
 import os
 import random
@@ -10,10 +10,12 @@ import requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from huggingface_hub import InferenceClient
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
 MUSIC = ROOT / "music"
+REFERENCE = ROOT / "assets" / "palm_reference.png"
 WORK.mkdir(exist_ok=True)
 
 TOPICS = [
@@ -58,32 +60,37 @@ def gemini_text(prompt: str) -> str:
     raise RuntimeError(f"Gemini text generation failed: {last_error}")
 
 
-def generate_pollinations_image(prompt: str, output: Path):
-    key = os.getenv("POLLINATIONS_API_KEY", "").strip()
-    model = os.getenv("POLLINATIONS_IMAGE_MODEL", "flux").strip()
-    url = "https://gen.pollinations.ai/image/" + requests.utils.quote(prompt, safe="")
-    params = {
-        "model": model,
-        "width": 1024,
-        "height": 1792,
-        "quality": "high",
-    }
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
+def generate_kontext_image(prompt: str, output: Path):
+    if not REFERENCE.exists():
+        raise RuntimeError(
+            "Missing reference image: assets/palm_reference.png. "
+            "Upload the user's palm-art reference image to this exact path before running the test."
+        )
+
+    token = os.environ.get("HF_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
+
+    client = InferenceClient(api_key=token, provider="auto")
+    image_bytes = REFERENCE.read_bytes()
     last_error = None
+
     for attempt in range(3):
         try:
-            r = requests.get(url, params=params, headers=headers, timeout=300)
-            if r.ok and r.content:
-                output.write_bytes(r.content)
-                print(f"Image generated with Pollinations model: {model}; bytes={len(r.content)}")
-                return
-            last_error = f"HTTP {r.status_code}: {r.text[:2000]}"
-            if r.status_code not in (429, 500, 502, 503, 504):
-                break
+            result = client.image_to_image(
+                image_bytes,
+                prompt=prompt,
+                model="black-forest-labs/FLUX.1-Kontext-dev",
+            )
+            result.save(output)
+            print("Image generated with Hugging Face FLUX.1-Kontext-dev using the palm reference image.")
+            return
         except Exception as exc:
             last_error = str(exc)
-        time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"Pollinations image generation failed: {last_error}")
+            print(f"Kontext attempt {attempt + 1}/3 failed: {last_error}")
+            time.sleep(min(10 * (attempt + 1), 30))
+
+    raise RuntimeError(f"FLUX.1-Kontext image generation failed: {last_error}")
 
 
 def make_fallback_devotional_music(category: str) -> Path:
@@ -149,7 +156,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 
 def main():
-    required = ["GEMINI_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
+    required = ["GEMINI_API_KEY", "HF_TOKEN", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
@@ -164,30 +171,30 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
-    image_prompt = f"""Photorealistic macro photograph of one real human hand on white paper, palm facing the camera, wrist visible, five fingers and thumb clearly separated, full hand filling a vertical 9:16 composition. Place 2-3 real blue and black ballpoint pens beside the hand.
+    image_prompt = f"""Use the uploaded palm-art reference image as the PRIMARY visual reference. Preserve the same real human hand concept, realistic palm anatomy, wrist, five separated fingers, camera angle, white-paper setting and ballpoint-pen-on-skin medium.
 
-The hand is the artwork surface: create a dense, handmade blue/indigo ballpoint-pen pilgrimage map drawn directly across the entire palm, wrist, thumb and ALL five fingers, continuing naturally almost to every fingertip. Target about 90 percent skin coverage with intricate fine linework. Every finger must contain substantial detailed artwork, not empty skin.
+Transform the hand into an extremely dense handmade blue/indigo ballpoint pilgrimage-map artwork, matching the reference's overall density and craftsmanship. The drawing must cover about 90 percent of the visible skin and continue across the palm, wrist, thumb and ALL five fingers almost to every fingertip. Do not leave fingers blank.
 
-The connected miniature map contains layered Himalayan/mountain terrain, contour lines, winding rivers and streams, bridges, long stairways, ghats, tiny temples and shrines, small houses, trees, animals and many tiny pilgrims. Use fine hatching, cross-hatching and stippling like an expert real ballpoint artist. Keep all landmarks tiny, numerous and integrated into one continuous travel/pilgrimage map. Theme: {scene}.
+Fill the hand with one connected miniature map: Himalayan or regional terrain, contour lines, winding rivers and streams, bridges, long stairways, ghats, tiny temples and shrines, small houses, trees, animals and many tiny pilgrims. Use very fine blue/indigo ballpoint hatching, cross-hatching and stippling. Landmarks must stay tiny and numerous rather than becoming large icons. Theme: {scene}.
 
-Preserve realistic skin pores, palm creases, nails and natural hand anatomy. The result must look like a real photograph of an intricate blue ballpoint drawing made by hand on skin, with pens and white paper visible around it.
+Keep the result photorealistic: visible skin pores, palm creases, nails and natural hand anatomy. Keep 2-3 real blue/black ballpoint pens beside the hand on white paper. The final image should look like a real macro photograph of an expert artist drawing an intricate pilgrimage map directly on a real hand.
 
-Do not make it a tattoo, sticker, printed glove, CGI, 3D render, cartoon, vector illustration, sparse symbols, giant objects, giant face, blank fingers, malformed fingers, extra fingers, colored ink, logo, watermark or large text."""
+Do NOT turn the artwork into a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT remove the fingers, change the hand into an illustration, create extra fingers, malformed fingers, giant objects, giant faces, colored ink, logos, watermarks or large text. The reference image's visual composition and dense hand-coverage are more important than inventing a new composition."""
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
-    generate_pollinations_image(image_prompt, image)
+    generate_kontext_image(image_prompt, image)
     music = choose_music(category)
     make_video(image, music, video)
 
     if os.getenv("TEST_ONLY", "false").lower() == "true":
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": os.getenv("POLLINATIONS_IMAGE_MODEL", "flux")}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "black-forest-labs/FLUX.1-Kontext-dev", "reference": str(REFERENCE)}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": os.getenv("POLLINATIONS_IMAGE_MODEL", "flux")}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "black-forest-labs/FLUX.1-Kontext-dev", "reference": str(REFERENCE)}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
