@@ -58,43 +58,32 @@ def gemini_text(prompt: str) -> str:
     raise RuntimeError(f"Gemini text generation failed: {last_error}")
 
 
-def generate_openrouter_image(prompt: str, output: Path):
-    token = os.environ["OPENROUTER_API_KEY"].strip()
-    # Free OpenRouter image test model. Change this only after the generated image is inspected.
-    model = os.getenv("OPENROUTER_IMAGE_MODEL", "recraft/recraft-v3:free").strip()
-    url = "https://openrouter.ai/api/v1/images"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "X-Title": "Bhakti Palm Art Automation",
-    }
-    payload = {
+def generate_pollinations_image(prompt: str, output: Path):
+    key = os.getenv("POLLINATIONS_API_KEY", "").strip()
+    model = os.getenv("POLLINATIONS_IMAGE_MODEL", "flux").strip()
+    url = "https://gen.pollinations.ai/image/" + requests.utils.quote(prompt, safe="")
+    params = {
         "model": model,
-        "prompt": prompt,
-        "aspect_ratio": "9:16",
-        "resolution": "1K",
-        "n": 1,
+        "width": 1024,
+        "height": 1792,
+        "quality": "high",
     }
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
     last_error = None
     for attempt in range(3):
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=300)
-            if r.ok:
-                data = r.json()
-                images = data.get("data") or []
-                if images and images[0].get("b64_json"):
-                    output.write_bytes(base64.b64decode(images[0]["b64_json"]))
-                    cost = (data.get("usage") or {}).get("cost")
-                    print(f"Image generated with OpenRouter model: {model}; reported cost={cost}")
-                    return
-                raise RuntimeError(f"OpenRouter response did not contain image data: {json.dumps(data)[:2000]}")
-            last_error = f"HTTP {r.status_code}: {r.text[:3000]}"
+            r = requests.get(url, params=params, headers=headers, timeout=300)
+            if r.ok and r.content:
+                output.write_bytes(r.content)
+                print(f"Image generated with Pollinations model: {model}; bytes={len(r.content)}")
+                return
+            last_error = f"HTTP {r.status_code}: {r.text[:2000]}"
             if r.status_code not in (429, 500, 502, 503, 504):
                 break
         except Exception as exc:
             last_error = str(exc)
         time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"OpenRouter image generation failed: {last_error}")
+    raise RuntimeError(f"Pollinations image generation failed: {last_error}")
 
 
 def make_fallback_devotional_music(category: str) -> Path:
@@ -160,7 +149,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 
 def main():
-    required = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
+    required = ["GEMINI_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
@@ -187,18 +176,18 @@ Do not make it a tattoo, sticker, printed glove, CGI, 3D render, cartoon, vector
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
-    generate_openrouter_image(image_prompt, image)
+    generate_pollinations_image(image_prompt, image)
     music = choose_music(category)
     make_video(image, music, video)
 
     if os.getenv("TEST_ONLY", "false").lower() == "true":
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": os.getenv("OPENROUTER_IMAGE_MODEL", "recraft/recraft-v3:free")}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": os.getenv("POLLINATIONS_IMAGE_MODEL", "flux")}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": os.getenv("OPENROUTER_IMAGE_MODEL", "recraft/recraft-v3:free")}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": os.getenv("POLLINATIONS_IMAGE_MODEL", "flux")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
