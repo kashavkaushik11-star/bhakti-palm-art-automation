@@ -26,11 +26,11 @@ TOPICS = [
 ]
 
 PALM_SCENES = {
-    "krishna": "a continuous Vrindavan pilgrimage map with Yamuna river, ghats, Govardhan hills, kadamba trees, cows, tiny devotees and small temples",
-    "shiv": "a continuous Himalayan Shiva pilgrimage map with snowy mountains, Kailash, river, Kedarnath-style temple, stairs, paths, Nandi and tiny pilgrims",
-    "hanuman": "a continuous Ram-Hanuman pilgrimage map with Ayodhya temple, forest, river, bridge, Sanjeevani mountain and tiny pilgrims",
-    "ram": "a continuous Ramayana pilgrimage map with Ayodhya temple, forest, river, bridge, ghats, mountains, trees and tiny pilgrims",
-    "mata": "a continuous Mata Rani pilgrimage map with Himalayan valleys, mountain stairs, shrine, temple, flags, bells, jyoti and tiny devotees",
+    "krishna": "Vrindavan pilgrimage map with Yamuna, ghats, Govardhan hills, kadamba trees, cows, tiny devotees and temples",
+    "shiv": "Himalayan Shiva pilgrimage map with snowy mountains, Kailash, river, Kedarnath-style temple, stairs, Nandi and tiny pilgrims",
+    "hanuman": "Ram-Hanuman pilgrimage map with Ayodhya temple, forest, river, bridge, Sanjeevani mountain and tiny pilgrims",
+    "ram": "Ramayana pilgrimage map with Ayodhya temple, forest, river, bridge, ghats, mountains, trees and tiny pilgrims",
+    "mata": "Mata Rani pilgrimage map with Himalayan valleys, mountain stairs, shrine, temple, flags, bells, jyoti and tiny devotees",
 }
 
 
@@ -67,7 +67,6 @@ def _save_nvidia_image(data: dict, output: Path):
 
 
 def generate_nvidia_image(prompt: str, output: Path):
-    """Benchmark NVIDIA hosted FLUX.2 Klein 4B for the palm-art task."""
     token = os.environ["NVIDIA_API_KEY"].strip()
     url = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b"
     headers = {
@@ -76,7 +75,6 @@ def generate_nvidia_image(prompt: str, output: Path):
         "Content-Type": "application/json",
     }
     payload = {
-        "mode": "Image Generation",
         "prompt": prompt,
         "width": 752,
         "height": 1392,
@@ -186,15 +184,13 @@ def main():
     scene = PALM_SCENES[category]
 
     image_prompt = f"""
-Create a premium photorealistic macro photo of ONE real adult human hand, palm facing camera, wrist fully visible, all five fingers and thumb separated, full hand inside a vertical portrait frame. Hand rests on clean white paper with 2–3 real blue/black ballpoint pens beside it.
+Photorealistic macro photo of ONE real adult human hand, palm facing camera, wrist fully visible, all five fingers and thumb clearly separated, full hand in a vertical portrait frame. Hand on clean white paper with 2–3 real blue/black ballpoint pens beside it.
 
-STYLE: an expert pen artist has drawn a dense blue/indigo pilgrimage map directly on real skin. Artwork must begin at wrist and continue through the palm, thumb, and EVERY finger toward the fingertips. Every finger must visibly have dense fine linework; no mostly blank finger. Target about 90% hand coverage while preserving pores, creases, wrinkles and nails.
+An expert pen artist has drawn a dense blue/indigo pilgrimage map directly on real skin, not a tattoo or digital print. The artwork starts at the wrist and covers the palm, thumb, and ALL five fingers nearly to the fingertips. Every finger must have dense fine linework; no blank fingers. About 90% of the visible hand is covered while skin pores, creases and nails remain realistic.
 
-Pack hundreds of tiny connected hand-drawn details into one continuous map: mountain ridges, contour lines, rivers, streams, stairs, bridges, ghats, tiny temples/shrines, houses, trees, animals, pilgrims, paths, clouds, architecture and devotional scenes, with fine ballpoint hatching, stippling and cross-hatching. Follow finger anatomy so the map flows across the whole hand.
+Hundreds of tiny connected map details: mountain ridges, contour lines, rivers, streams, stairs, bridges, ghats, tiny temples, shrines, houses, trees, animals, pilgrims, paths and architecture, using fine ballpoint hatching, stippling and cross-hatching. Theme: {scene}. Any deity is only a tiny integrated scene.
 
-Theme: {scene}. Any deity is only a tiny integrated scene, never a large portrait.
-
-Avoid: blank fingers/palm, sparse icons, giant faces, tattoo, printed skin, sticker, CGI, 3D, cartoon, vector, digital art, plastic/paper hand, colored ink, large text, logo, watermark, extra/fused/deformed fingers.
+No blank areas, sparse icons, giant deity face, tattoo, sticker, CGI, 3D, cartoon, vector, plastic hand, colored ink, large text, logo, watermark, or malformed fingers.
 """.strip()
 
     image = WORK / "palm_art.png"
