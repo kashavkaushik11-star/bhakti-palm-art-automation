@@ -25,11 +25,11 @@ TOPICS = [
 ]
 
 PALM_SCENES = {
-    "krishna": "Fill the palm and fingers with a miniature Vrindavan devotional story: Krishna with flute, Radha, Yamuna river, kadamba trees, cows, gopis, small temple architecture and recognizable Krishna-bhakti scenes arranged like a hand-drawn travel/story illustration.",
-    "shiv": "Fill the palm and fingers with a miniature Shiva devotional landscape: Mount Kailash, Lord Shiva, Parvati, Ganga descending, trishul, Nandi, Kedarnath-style Himalayan temple, snowy mountains, pilgrims and tiny sacred landscape details arranged as one continuous palm illustration.",
-    "hanuman": "Fill the palm and fingers with a miniature Hanuman-Ram devotional story: Hanuman, Shri Ram, Ayodhya temple architecture, forest journey, Sanjeevani mountain, flying Hanuman silhouette, devotees and small Ram-bhakti scenes woven continuously across the palm.",
-    "ram": "Fill the palm and fingers with a miniature Ramayana devotional story: Shri Ram, Sita, Lakshman, Hanuman, Ayodhya temple, forest path, river, bridge and small Ramayana scenes arranged as a detailed continuous illustrated pilgrimage/story map across the hand.",
-    "mata": "Fill the palm and fingers with a miniature Mata Rani devotional pilgrimage scene: Durga/Mata Rani, mountain temple, shrine, devotees, temple bells, sacred flags, glowing jyoti and Himalayan-style pilgrimage scenery arranged as one continuous detailed hand illustration.",
+    "krishna": "A dense miniature Vrindavan scene across the palm: Krishna with flute, Radha, Yamuna, cows, kadamba trees, temples and tiny devotees.",
+    "shiv": "A dense miniature Shiva pilgrimage scene across the palm: Mount Kailash, Shiva, Parvati, Ganga, Nandi, trishul, Kedarnath temple, snowy mountains and pilgrims.",
+    "hanuman": "A dense miniature Hanuman-Ram story across the palm: Hanuman, Shri Ram, Ayodhya temple, forest, Sanjeevani mountain, devotees and sacred landscape.",
+    "ram": "A dense miniature Ramayana pilgrimage scene across the palm: Ram, Sita, Lakshman, Hanuman, Ayodhya temple, forest, river, bridge and tiny devotees.",
+    "mata": "A dense miniature Mata Rani pilgrimage scene across the palm: Durga, mountain shrine, temple, devotees, sacred flags, jyoti and Himalayan scenery.",
 }
 
 
@@ -58,27 +58,40 @@ def gemini_text(prompt: str) -> str:
 def generate_flux_image(prompt: str, output: Path):
     token = os.environ["CLOUDFLARE_API_TOKEN"]
     account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-    url = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/@cf/black-forest-labs/flux-1-schnell"
-    # FLUX.1 schnell supports up to 8 steps; use the higher setting for finer line detail.
-    payload = {"prompt": prompt[:2000], "steps": 8}
+    models = [
+        ("@cf/black-forest-labs/flux-1-dev", 28),
+        ("@cf/black-forest-labs/flux-1-schnell", 8),
+    ]
     last_error = None
-    for attempt in range(4):
-        r = requests.post(url, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, json=payload, timeout=180)
-        if r.ok:
-            content_type = r.headers.get("content-type", "")
-            if "application/json" in content_type:
-                data = r.json()
-                image = data.get("result", {}).get("image")
-                if image:
-                    output.write_bytes(base64.b64decode(image))
+    for model, steps in models:
+        url = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
+        payload = {"prompt": prompt[:1900], "steps": steps}
+        for attempt in range(3):
+            r = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=240,
+            )
+            if r.ok:
+                content_type = r.headers.get("content-type", "")
+                if "application/json" in content_type:
+                    data = r.json()
+                    image = data.get("result", {}).get("image")
+                    if image:
+                        output.write_bytes(base64.b64decode(image))
+                        print(f"Image generated with {model}")
+                        return
+                    last_error = str(data)
+                else:
+                    output.write_bytes(r.content)
+                    print(f"Image generated with {model}")
                     return
-                raise RuntimeError(f"Cloudflare returned JSON without image: {data}")
-            output.write_bytes(r.content)
-            return
-        last_error = r.text
-        if r.status_code not in (429, 500, 502, 503, 504):
-            break
-        time.sleep(min(5 * (attempt + 1), 20))
+            else:
+                last_error = r.text
+                if r.status_code not in (429, 500, 502, 503, 504):
+                    break
+            time.sleep(min(5 * (attempt + 1), 20))
     raise RuntimeError(f"Cloudflare FLUX image generation failed: {last_error}")
 
 
@@ -117,7 +130,6 @@ def facebook_reel(video: Path, title: str, description: str):
     page = os.environ["FACEBOOK_PAGE_ID"].strip()
     token = os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"].strip()
     version = os.getenv("FACEBOOK_GRAPH_VERSION", "v26.0")
-
     if token.startswith("OAuth "):
         token = token[6:].strip()
 
@@ -158,14 +170,7 @@ def facebook_reel(video: Path, title: str, description: str):
 
     finish = requests.post(
         f"https://graph.facebook.com/{version}/{page}/video_reels",
-        data={
-            "upload_phase": "finish",
-            "video_id": video_id,
-            "video_state": "PUBLISHED",
-            "title": title,
-            "description": description,
-            "access_token": token,
-        },
+        data={"upload_phase": "finish", "video_id": video_id, "video_state": "PUBLISHED", "title": title, "description": description, "access_token": token},
         timeout=60,
     )
     if not finish.ok:
@@ -193,7 +198,7 @@ def main():
     topic, deity, message, category = random.choice(TOPICS)
     title = f"🙏 {topic} | भक्ति संदेश"
 
-    text_prompt = f"Write a short, devotional Hindi caption for a social media Reel about {topic}. Mention {deity} naturally. Keep it positive, simple and suitable for a 10-second devotional video. Return only the caption."
+    text_prompt = f"Write a short devotional Hindi caption for a Reel about {topic}. Mention {deity}. Return only the caption."
     try:
         generated_caption = gemini_text(text_prompt)
     except Exception as exc:
@@ -201,40 +206,21 @@ def main():
         generated_caption = message
 
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
-
     scene = PALM_SCENES[category]
+
+    # Keep the entire prompt compact enough that the important style constraints are
+    # not cut off by the model API. The previous prompt was too long and its final
+    # negative constraints were being truncated.
     image_prompt = f"""
-Create a premium photorealistic devotional PALM ART photograph inspired by the provided reference style.
-This is NOT a normal illustration and NOT a deity portrait floating above a hand.
-The main subject is one real human open palm and wrist, photographed from the front in a clean studio setup.
-The artwork is physically drawn ON THE REAL SKIN of the palm and fingers, covering most of the entire hand.
+Photorealistic macro photograph of ONE real human open palm and wrist, front-facing, vertical portrait.
+The palm is completely covered with an extremely dense, intricate BLUE/INDIGO BALLPOINT-PEN illustration drawn directly on the real skin, matching premium handmade palm-art reference photography.
 {scene}
-
-REFERENCE STYLE REQUIREMENTS:
-- ultra-detailed blue ballpoint pen / indigo ink hand-drawing directly on realistic human skin
-- thousands of tiny pen strokes, cross-hatching, stippling, miniature buildings, mountains, people and devotional details
-- intricate continuous artwork across the palm, thumb and all four fingers, like a highly detailed illustrated pilgrimage/story map
-- realistic skin pores, wrinkles and palm texture must remain visible beneath the artwork
-- hand must look like a real photographed human hand, anatomically correct, five fingers clearly separated
-- clean white paper/tabletop background with a few realistic blue and black ballpoint pens placed naturally around the hand edges
-- premium macro product photography, sharp focus on the palm artwork, natural soft studio lighting, subtle realistic shadows
-- sophisticated Indian devotional handmade-art aesthetic, extremely high detail, realistic ink bleeding/pressure variations on skin
-- artwork should feel physically hand-drawn with a fine blue pen, not digitally printed, not painted and not cartoon-like
-- composition should fill the vertical frame and keep the complete wrist and hand visible
-
-STRICTLY AVOID:
-- no floating deity, no 3D deity emerging from the hand
-- no separate paper drawing of a hand
-- no parchment, beige illustration sheet or framed artwork
-- no cartoon, anime, CGI, vector art or fantasy poster
-- no black-only ink; use rich blue/indigo ballpoint ink as the dominant drawing medium
-- no giant single deity portrait occupying the whole palm; use many connected miniature devotional scenes
-- no collage panels, no borders, no watermark, no logo
-- no random modern objects except the realistic pens around the hand
-- avoid large written words or labels because generated text is unreliable
-
-Vertical portrait social-media composition, premium photorealistic reference-photo quality, extremely intricate palm artwork.
-"""
+Every finger and the whole palm must contain continuous miniature scenes: tiny mountains, temples, people, trees, rivers and devotional details. No empty palm areas. Thousands of fine pen strokes, cross-hatching and stippling. Real skin pores, wrinkles and natural hand texture remain visible underneath the ink. Anatomically correct five-finger hand.
+Clean white tabletop/background. A few real blue and black ballpoint pens naturally placed around the hand edges. Premium studio macro photography, sharp focus, realistic shadows, natural soft light, extremely high detail.
+IMPORTANT: this must look like a REAL PHOTOGRAPH of artwork physically drawn with a blue ballpoint pen on skin, NOT a digital illustration, tattoo, sticker, vector, cartoon or CGI.
+NO floating deity, NO 3D figure emerging from the palm, NO isolated symbols, NO random icons, NO large empty skin areas, NO colored painting, NO black-only ink, NO parchment, NO beige paper hand, NO collage panels, NO border, NO watermark, NO logo, NO large text or labels.
+The entire palm should read as one connected devotional story/map artwork, like a handcrafted masterpiece.
+""".strip()
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
@@ -242,6 +228,12 @@ Vertical portrait social-media composition, premium photorealistic reference-pho
 
     music = choose_music(category)
     make_video(image, music, video)
+
+    if os.getenv("TEST_ONLY", "false").lower() == "true":
+        print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video)}, ensure_ascii=False))
+        return
+
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
     print(json.dumps({"topic": topic, "music": music.name, "facebook": fb, "youtube_video_id": yt}, ensure_ascii=False))
