@@ -75,12 +75,37 @@ def generate_flux_image(prompt: str, output: Path):
     raise RuntimeError(f"Cloudflare FLUX image generation failed: {last_error}")
 
 
+def make_fallback_devotional_music(category: str) -> Path:
+    """Create a short copyright-safe devotional instrumental bed when no local track is supplied.
+
+    This is only a test-safe fallback, not a Hindi vocal bhajan. Users can place licensed
+    category-named MP3/WAV/M4A tracks in music/ to use real songs.
+    """
+    output = WORK / f"fallback_{category}.mp3"
+    if output.exists() and output.stat().st_size > 0:
+        return output
+
+    # Gentle drone + bell-like tones; generated locally by FFmpeg, no external music needed.
+    filter_complex = (
+        "sine=frequency=196:duration=10[a];"
+        "sine=frequency=293.66:duration=10[b];"
+        "sine=frequency=392:duration=10[c];"
+        "[a][b][c]amix=inputs=3:duration=longest:weights=0.48 0.28 0.16,"
+        "volume=0.55,afade=t=in:st=0:d=0.8,afade=t=out:st=8.8:d=1.2"
+    )
+    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", filter_complex, "-t", "10", "-c:a", "libmp3lame", "-b:a", "128k", str(output)]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    return output
+
+
 def choose_music(category: str) -> Path:
     files = list(MUSIC.glob("*.mp3")) + list(MUSIC.glob("*.wav")) + list(MUSIC.glob("*.m4a"))
-    if not files:
-        raise RuntimeError("No music found. Add licensed devotional tracks to music/ first.")
-    matches = [p for p in files if category.lower() in p.stem.lower()]
-    return random.choice(matches or files)
+    if files:
+        matches = [p for p in files if category.lower() in p.stem.lower()]
+        return random.choice(matches or files)
+
+    print("No licensed track found in music/. Using generated devotional instrumental fallback for this test run.")
+    return make_fallback_devotional_music(category)
 
 
 def make_video(image: Path, music: Path, output: Path):
