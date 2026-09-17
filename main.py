@@ -26,11 +26,11 @@ TOPICS = [
 ]
 
 PALM_SCENES = {
-    "krishna": "Vrindavan pilgrimage map with Yamuna, ghats, Govardhan hills, kadamba trees, cows, tiny devotees and temples",
-    "shiv": "Himalayan Shiva pilgrimage map with snowy mountains, Kailash, river, Kedarnath-style temple, stairs, Nandi and tiny pilgrims",
-    "hanuman": "Ram-Hanuman pilgrimage map with Ayodhya temple, forest, river, bridge, Sanjeevani mountain and tiny pilgrims",
-    "ram": "Ramayana pilgrimage map with Ayodhya temple, forest, river, bridge, ghats, mountains, trees and tiny pilgrims",
-    "mata": "Mata Rani pilgrimage map with Himalayan valleys, mountain stairs, shrine, temple, flags, bells, jyoti and tiny devotees",
+    "krishna": "Vrindavan, Yamuna, ghats, Govardhan, cows and tiny temples",
+    "shiv": "Himalayan Shiva pilgrimage, snowy mountains, river, temple, stairs and pilgrims",
+    "hanuman": "Ram-Hanuman pilgrimage, Ayodhya, forest, river, bridge, mountain and pilgrims",
+    "ram": "Ramayana pilgrimage, Ayodhya, forest, river, bridge, ghats and pilgrims",
+    "mata": "Mata Rani pilgrimage, Himalayan valley, stairs, shrine, temple, flags and devotees",
 }
 
 
@@ -69,19 +69,10 @@ def _save_nvidia_image(data: dict, output: Path):
 def generate_nvidia_image(prompt: str, output: Path):
     token = os.environ["NVIDIA_API_KEY"].strip()
     url = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "prompt": prompt,
-        "width": 752,
-        "height": 1392,
-        "steps": 4,
-        "seed": random.randint(1, 2_147_483_647),
-        "samples": 1,
-    }
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "Content-Type": "application/json"}
+    if len(prompt) > 780:
+        prompt = prompt[:780]
+    payload = {"prompt": prompt, "width": 752, "height": 1392, "steps": 4, "seed": random.randint(1, 2_147_483_647), "samples": 1}
     last_error = None
     for attempt in range(3):
         try:
@@ -103,13 +94,7 @@ def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
     if output.exists() and output.stat().st_size > 0:
         return output
-    filter_complex = (
-        "sine=frequency=196:duration=10[a];"
-        "sine=frequency=293.66:duration=10[b];"
-        "sine=frequency=392:duration=10[c];"
-        "[a][b][c]amix=inputs=3:duration=longest:weights=0.48 0.28 0.16,"
-        "volume=0.55,afade=t=in:st=0:d=0.8,afade=t=out:st=8.8:d=1.2"
-    )
+    filter_complex = "sine=frequency=196:duration=10[a];sine=frequency=293.66:duration=10[b];sine=frequency=392:duration=10[c];[a][b][c]amix=inputs=3:duration=longest:weights=0.48 0.28 0.16,volume=0.55,afade=t=in:st=0:d=0.8,afade=t=out:st=8.8:d=1.2"
     cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", filter_complex, "-t", "10", "-c:a", "libmp3lame", "-b:a", "128k", str(output)]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     return output
@@ -183,15 +168,7 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
-    image_prompt = f"""
-Photorealistic close-up photo of one human hand, palm facing camera, wrist visible, five fingers and thumb separated, full hand in a 9:16 portrait frame. White paper and 2-3 real blue/black ballpoint pens beside the hand.
-
-Dense handmade blue/indigo ballpoint illustration covers the palm area and continues naturally from the wrist across the thumb and all five fingers almost to the fingertips. Every finger has rich fine linework and tiny details. Preserve realistic hand texture, creases and nails.
-
-Create one connected miniature pilgrimage map: mountains, contour lines, rivers, streams, stairs, bridges, ghats, tiny temples, shrines, houses, trees, animals and pilgrims, using fine hatching, stippling and cross-hatching. Theme: {scene}. Keep the devotional scene tiny and integrated into the map.
-
-No blank fingers, sparse symbols, giant face, tattoo, sticker, CGI, 3D, cartoon, vector, colored ink, large text, logo, watermark or malformed fingers.
-""".strip()
+    image_prompt = f"Realistic macro photo of one real human hand, palm facing camera, wrist visible, five fingers and thumb separated, full hand in 9:16. White paper with 2-3 blue/black ballpoint pens. Dense handmade blue ballpoint pilgrimage map drawn directly on skin from wrist across palm, thumb and ALL five fingers to fingertips; every finger richly filled, about 90% coverage. Tiny connected mountains, rivers, temples, stairs, bridges, houses, trees and pilgrims with fine hatching. Theme: {scene}. Real pores and nails. No blank fingers, tattoo, CGI, cartoon, colored ink, text, logo or malformed fingers."
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
