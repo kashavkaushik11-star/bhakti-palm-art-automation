@@ -60,8 +60,8 @@ def gemini_text(prompt: str) -> str:
 
 def generate_openrouter_image(prompt: str, output: Path):
     token = os.environ["OPENROUTER_API_KEY"].strip()
-    # OpenRouter's current Image API uses the canonical model slug below.
-    model = os.getenv("OPENROUTER_IMAGE_MODEL", "bytedance-seed/seedream-4.5").strip()
+    # Free OpenRouter image test model. Change this only after the generated image is inspected.
+    model = os.getenv("OPENROUTER_IMAGE_MODEL", "recraft/recraft-v3:free").strip()
     url = "https://openrouter.ai/api/v1/images"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -72,7 +72,7 @@ def generate_openrouter_image(prompt: str, output: Path):
         "model": model,
         "prompt": prompt,
         "aspect_ratio": "9:16",
-        "resolution": "2K",
+        "resolution": "1K",
         "n": 1,
     }
     last_error = None
@@ -193,12 +193,12 @@ Do not make it a tattoo, sticker, printed glove, CGI, 3D render, cartoon, vector
 
     if os.getenv("TEST_ONLY", "false").lower() == "true":
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": os.getenv("OPENROUTER_IMAGE_MODEL", "bytedance-seed/seedream-4.5")}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": os.getenv("OPENROUTER_IMAGE_MODEL", "recraft/recraft-v3:free")}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": os.getenv("OPENROUTER_IMAGE_MODEL", "bytedance-seed/seedream-4.5")}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": os.getenv("OPENROUTER_IMAGE_MODEL", "recraft/recraft-v3:free")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
