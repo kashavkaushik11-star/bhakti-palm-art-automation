@@ -59,7 +59,7 @@ def gemini_text(prompt: str) -> str:
     raise RuntimeError(f"Gemini text generation failed: {last_error}")
 
 
-def generate_flux_dev_image(prompt: str, output: Path):
+def generate_qwen_image(prompt: str, output: Path):
     token = os.environ.get("HF_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
@@ -70,18 +70,18 @@ def generate_flux_dev_image(prompt: str, output: Path):
         try:
             result = client.text_to_image(
                 prompt=prompt,
-                model="black-forest-labs/FLUX.1-dev",
+                model="Qwen/Qwen-Image",
                 width=768,
                 height=1360,
             )
             result.save(output)
-            print("Image generated with Hugging Face black-forest-labs/FLUX.1-dev (text-to-image, no reference image input).")
+            print("Image generated with Hugging Face Qwen/Qwen-Image (text-to-image, no reference image input).")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"FLUX.1-dev attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"Qwen-Image attempt {attempt + 1}/3 failed: {last_error}")
             time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"FLUX.1-dev image generation failed: {last_error}")
+    raise RuntimeError(f"Qwen/Qwen-Image generation failed: {last_error}")
 
 
 def make_fallback_devotional_music(category: str) -> Path:
@@ -173,24 +173,24 @@ The artwork is one connected miniature pilgrimage world made of tiny contour lin
 
 Place 2-3 real blue/black ballpoint pens beside the hand on the white paper. The result must look like a genuine close-up photograph of an expert pen artist who created a NEW drawing directly on a real hand.
 
-CRITICAL: Do NOT copy, reproduce, trace, recreate or closely imitate any reference image. Do NOT use a reference image as input. Invent a fresh hand composition and fresh artwork for this scene while retaining only the general medium: dense blue ballpoint pen art on real skin.
+CRITICAL: This is a TEXT-TO-IMAGE generation. Do not reproduce any existing image. Invent a fresh hand composition and completely fresh artwork for the chosen pilgrimage scene. The desired medium is only dense blue ballpoint pen art on real skin; the actual map, landmarks, people, layout and linework must be newly invented.
 
 Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT create extra or malformed fingers, giant objects, giant faces, colored ink, logos, watermarks or large text. No blank fingers. No large single landmark dominating the hand."""
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
-    generate_flux_dev_image(image_prompt, image)
+    generate_qwen_image(image_prompt, image)
     music = choose_music(category)
     make_video(image, music, video)
 
     if test_only:
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "black-forest-labs/FLUX.1-dev", "reference_used_as_input": False}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Qwen/Qwen-Image", "reference_used_as_input": False}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "black-forest-labs/FLUX.1-dev", "reference_used_as_input": False}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Qwen/Qwen-Image", "reference_used_as_input": False}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
