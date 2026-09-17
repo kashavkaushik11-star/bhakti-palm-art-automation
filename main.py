@@ -59,11 +59,8 @@ def generate_flux_image(prompt: str, output: Path):
     token = os.environ["CLOUDFLARE_API_TOKEN"]
     account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
     last_error = None
-
-    # FLUX.2 Dev is Cloudflare's newer high-fidelity model and supports portrait
-    # dimensions through its multipart REST interface. Keep Schnell as a fallback.
     models = [
-        ("@cf/black-forest-labs/flux-2-dev", 28),
+        ("@cf/black-forest-labs/flux-2-dev", 35),
         ("@cf/black-forest-labs/flux-1-schnell", 8),
     ]
     for model, steps in models:
@@ -75,13 +72,13 @@ def generate_flux_image(prompt: str, output: Path):
                         url,
                         headers={"Authorization": f"Bearer {token}"},
                         files={
-                            "prompt": (None, prompt[:2048]),
+                            "prompt": (None, prompt[:5000]),
                             "steps": (None, str(steps)),
                             "width": (None, "1024"),
                             "height": (None, "1536"),
-                            "guidance": (None, "4.0"),
+                            "guidance": (None, "4.5"),
                         },
-                        timeout=360,
+                        timeout=420,
                     )
                 else:
                     response = requests.post(
@@ -90,7 +87,6 @@ def generate_flux_image(prompt: str, output: Path):
                         json={"prompt": prompt[:2048], "steps": steps},
                         timeout=300,
                     )
-
                 if response.ok:
                     data = response.json()
                     image = data.get("result", {}).get("image")
@@ -106,7 +102,6 @@ def generate_flux_image(prompt: str, output: Path):
             except Exception as exc:
                 last_error = str(exc)
             time.sleep(min(8 * (attempt + 1), 24))
-
     raise RuntimeError(f"Cloudflare FLUX image generation failed: {last_error}")
 
 
@@ -147,47 +142,21 @@ def facebook_reel(video: Path, title: str, description: str):
     version = os.getenv("FACEBOOK_GRAPH_VERSION", "v26.0")
     if token.startswith("OAuth "):
         token = token[6:].strip()
-
-    verify = requests.get(
-        f"https://graph.facebook.com/{version}/{page}",
-        params={"fields": "id,name", "access_token": token},
-        timeout=60,
-    )
+    verify = requests.get(f"https://graph.facebook.com/{version}/{page}", params={"fields": "id,name", "access_token": token}, timeout=60)
     if not verify.ok:
         raise RuntimeError(f"Facebook Page token/Page ID check failed ({verify.status_code}): {verify.text[:1200]}")
-
-    start = requests.post(
-        f"https://graph.facebook.com/{version}/{page}/video_reels",
-        data={"upload_phase": "start", "access_token": token},
-        timeout=60,
-    )
+    start = requests.post(f"https://graph.facebook.com/{version}/{page}/video_reels", data={"upload_phase": "start", "access_token": token}, timeout=60)
     if not start.ok:
         raise RuntimeError(f"Facebook Reel start failed ({start.status_code}): {start.text[:2000]}")
-
     info = start.json()
     video_id = info["video_id"]
     upload_url = info.get("upload_url") or f"https://rupload.facebook.com/video-upload/{version}/{video_id}"
     size = video.stat().st_size
     with video.open("rb") as fh:
-        upload = requests.post(
-            upload_url,
-            headers={
-                "Authorization": f"OAuth {token}",
-                "offset": "0",
-                "file_size": str(size),
-                "Content-Type": "application/octet-stream",
-            },
-            data=fh,
-            timeout=300,
-        )
+        upload = requests.post(upload_url, headers={"Authorization": f"OAuth {token}", "offset": "0", "file_size": str(size), "Content-Type": "application/octet-stream"}, data=fh, timeout=300)
     if not upload.ok:
         raise RuntimeError(f"Facebook Reel upload failed ({upload.status_code}): {upload.text[:2000]}")
-
-    finish = requests.post(
-        f"https://graph.facebook.com/{version}/{page}/video_reels",
-        data={"upload_phase": "finish", "video_id": video_id, "video_state": "PUBLISHED", "title": title, "description": description, "access_token": token},
-        timeout=60,
-    )
+    finish = requests.post(f"https://graph.facebook.com/{version}/{page}/video_reels", data={"upload_phase": "finish", "video_id": video_id, "video_state": "PUBLISHED", "title": title, "description": description, "access_token": token}, timeout=60)
     if not finish.ok:
         raise RuntimeError(f"Facebook Reel publish failed ({finish.status_code}): {finish.text[:2000]}")
     return finish.json()
@@ -212,32 +181,33 @@ def main():
 
     topic, deity, message, category = random.choice(TOPICS)
     title = f"🙏 {topic} | भक्ति संदेश"
-
-    text_prompt = f"Write a short devotional Hindi caption for a Reel about {topic}. Mention {deity}. Return only the caption."
     try:
-        generated_caption = gemini_text(text_prompt)
+        generated_caption = gemini_text(f"Write a short devotional Hindi caption for a Reel about {topic}. Mention {deity}. Return only the caption.")
     except Exception as exc:
         print(f"Gemini text unavailable; using local caption: {exc}")
         generated_caption = message
-
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
     image_prompt = f"""
-Ultra-realistic professional macro photograph of ONE real human open palm and wrist, palm facing camera, portrait composition, hand centered and filling most of the frame.
-The entire hand is a MASTERPIECE of extremely dense blue/indigo BALLPOINT PEN HAND-DRAWING physically drawn directly on the skin. Recreate the visual language of premium real palm-art reference photography: thousands of tiny pen strokes, fine cross-hatching, stippling, miniature line-art scenes, realistic pen pressure and imperfect handmade strokes.
-{scene}
-CRITICAL COMPOSITION: the drawing is ONE CONNECTED CONTINUOUS PANORAMA from wrist to palm and continuing naturally across ALL FIVE FINGERS and thumb. Cover about 90 percent of visible skin with connected artwork. Every finger must contain detailed landscape/architecture/people/foliage, not one isolated icon. The palm must be packed with layered tiny temples, mountains, rivers, trees, pilgrims, paths and devotional storytelling. Very little untouched skin.
-The ink follows the natural creases and contours of the hand. Real skin pores, fine wrinkles and natural texture remain visible beneath the blue ink. Anatomically correct human hand, five fingers, realistic proportions.
-White paper tabletop, a few real blue and black ballpoint pens around the edges, soft natural studio light, realistic shadows, shallow depth of field, extremely sharp macro detail, high-end photography.
-ABSOLUTELY NOT: tattoo, sticker, printed graphic, digital painting, CGI, 3D object, floating deity, deity emerging from palm, isolated symbols, sparse icons, empty palm, blank fingers, colored paint, black ink, parchment, paper hand, collage, panels, borders, watermark, logo, large text.
-The final image must look like a real photograph of an artist who spent hours drawing a dense devotional miniature world with a blue ballpoint pen directly on a person's hand.
+Photorealistic high-end macro photograph of ONE real human open palm, wrist and five fingers, palm facing the camera, portrait 2:3 composition. The hand fills almost the whole frame.
+
+STYLE: genuine handmade blue/indigo ballpoint-pen palm art photographed on real skin. Thousands of ultra-fine pen strokes, cross-hatching, stippling, tiny architectural linework, natural ink pressure variation. Real skin pores, creases and wrinkles remain visible. This must look physically drawn by a skilled pen artist, never digitally printed.
+
+SUBJECT: {scene}
+
+MOST IMPORTANT: create ONE SINGLE CONTINUOUS MINIATURE WORLD across the wrist, entire palm, thumb and ALL FIVE FINGERS. The artwork must flow across the natural hand creases like a detailed pilgrimage MAP. Cover roughly 90-95% of visible skin with dense connected blue linework. There must be almost no large blank skin areas. Each finger must be filled with tiny connected scenery: mountain ridges, temples, stairs, rivers, bridges, trees, pilgrims, animals, paths and tiny devotional scenes. Use dozens of tiny scenes instead of one large subject.
+
+DO NOT make a large Krishna/Shiva/Hanuman/Ram/Mata portrait. Any deity must be a tiny element inside the miniature landscape, occupying only a small area. The visual focus is the dense handcrafted MAP-LIKE PEN ART covering the whole hand.
+
+Natural white paper/tabletop background with a few real blue and black ballpoint pens around the edges. Soft daylight, realistic shadows, sharp macro focus, authentic photography, highly detailed skin and ink texture.
+
+NEGATIVE: large deity portrait, giant face, giant figure, floating deity, 3D object, deity emerging from palm, tattoo, sticker, printed graphic, digital art, CGI, cartoon, vector, sparse symbols, isolated icons, empty palm, blank fingers, colored paint, black-only ink, parchment, paper hand, collage, panels, borders, watermark, logo, text, extra fingers, malformed hand.
 """.strip()
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
     generate_flux_image(image_prompt, image)
-
     music = choose_music(category)
     make_video(image, music, video)
 
