@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 
 import requests
+from google import genai
+from google.genai import types
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -25,11 +27,11 @@ TOPICS = [
 ]
 
 PALM_SCENES = {
-    "krishna": "A continuous Vrindavan devotional panorama: Krishna playing flute, Radha, Yamuna river, cows, kadamba trees, Govardhan hills, ghats, small temples and many tiny devotees.",
-    "shiv": "A continuous Shiva pilgrimage panorama: Mount Kailash, Shiva and Parvati, Ganga, Nandi, trishul, Kedarnath-style temple, snowy Himalayas, pilgrims, mountain paths and sacred ghats.",
-    "hanuman": "A continuous Hanuman-Ram devotional panorama: Hanuman, Shri Ram, Ayodhya temple, forest, Sanjeevani mountain, river, bridge, tiny devotees and pilgrimage paths.",
-    "ram": "A continuous Ramayana panorama: Ram, Sita, Lakshman, Hanuman, Ayodhya temple, forest, river, bridge, ghats, mountains, trees and tiny devotees.",
-    "mata": "A continuous Mata Rani pilgrimage panorama: Durga/Mata Rani, mountain shrine, temple, Himalayan path, devotees, flags, bells, jyoti, valleys and sacred landscape.",
+    "krishna": "A continuous Vrindavan pilgrimage panorama: Yamuna river, ghats, Govardhan hills, kadamba trees, cows, tiny devotees, small temples and a very small Krishna playing flute as one detail inside the landscape.",
+    "shiv": "A continuous Himalayan Shiva pilgrimage panorama: snowy mountains, Kailash, river, Kedarnath-style temple, mountain stairs and paths, Nandi, tiny pilgrims and a very small Shiva scene embedded inside the landscape.",
+    "hanuman": "A continuous Ram-Hanuman pilgrimage panorama: Ayodhya temple, forest, river, bridge, Sanjeevani mountain, tiny pilgrims and a very small Hanuman scene embedded inside the landscape.",
+    "ram": "A continuous Ramayana pilgrimage panorama: Ayodhya temple, forest, river, bridge, ghats, mountains, trees, tiny pilgrims and very small Ram-Sita-Lakshman-Hanuman scenes embedded inside the landscape.",
+    "mata": "A continuous Mata Rani pilgrimage panorama: Himalayan valleys, mountain stairs, shrine, temple, flags, bells, jyoti, tiny devotees and a very small Mata Rani scene embedded inside the landscape.",
 }
 
 
@@ -55,54 +57,48 @@ def gemini_text(prompt: str) -> str:
     raise RuntimeError(f"Gemini text generation failed: {last_error}")
 
 
-def generate_flux_image(prompt: str, output: Path):
-    token = os.environ["CLOUDFLARE_API_TOKEN"]
-    account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+def generate_gemini_image(prompt: str, output: Path):
+    """Generate the palm artwork with Nano Banana 2 (Gemini 3.1 Flash Image).
+
+    This replaces FLUX.2 for the artwork because Gemini 3.1 Flash Image supports
+    2K/4K output, stronger multimodal composition and Google Image Search grounding.
+    """
+    key = os.environ["GEMINI_API_KEY"]
+    client = genai.Client(api_key=key)
+    config = types.GenerateContentConfig(
+        response_modalities=["IMAGE"],
+        response_format={"image": {"aspect_ratio": "9:16", "image_size": "2K"}},
+        tools=[
+            types.Tool(
+                google_search=types.GoogleSearch(
+                    search_types=types.SearchTypes(
+                        image_search=types.ImageSearch(),
+                        web_search=types.WebSearch(),
+                    )
+                )
+            )
+        ],
+    )
+
     last_error = None
-    models = [
-        ("@cf/black-forest-labs/flux-2-dev", 35),
-        ("@cf/black-forest-labs/flux-1-schnell", 8),
-    ]
-    for model, steps in models:
-        url = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
-        for attempt in range(3):
-            try:
-                if model.endswith("flux-2-dev"):
-                    response = requests.post(
-                        url,
-                        headers={"Authorization": f"Bearer {token}"},
-                        files={
-                            "prompt": (None, prompt[:5000]),
-                            "steps": (None, str(steps)),
-                            "width": (None, "1024"),
-                            "height": (None, "1536"),
-                            "guidance": (None, "4.5"),
-                        },
-                        timeout=420,
-                    )
-                else:
-                    response = requests.post(
-                        url,
-                        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                        json={"prompt": prompt[:2048], "steps": steps},
-                        timeout=300,
-                    )
-                if response.ok:
-                    data = response.json()
-                    image = data.get("result", {}).get("image")
-                    if image:
-                        output.write_bytes(base64.b64decode(image))
-                        print(f"Image generated with {model}")
-                        return
-                    last_error = str(data)
-                else:
-                    last_error = response.text
-                    if response.status_code not in (429, 500, 502, 503, 504):
-                        break
-            except Exception as exc:
-                last_error = str(exc)
-            time.sleep(min(8 * (attempt + 1), 24))
-    raise RuntimeError(f"Cloudflare FLUX image generation failed: {last_error}")
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.1-flash-image",
+                contents=prompt,
+                config=config,
+            )
+            for part in response.parts:
+                if part.inline_data is not None:
+                    image = part.as_image()
+                    image.save(output)
+                    print("Image generated with Gemini 3.1 Flash Image (Nano Banana 2)")
+                    return
+            last_error = "Gemini returned no image part."
+        except Exception as exc:
+            last_error = str(exc)
+        time.sleep(min(10 * (attempt + 1), 30))
+    raise RuntimeError(f"Gemini Nano Banana image generation failed: {last_error}")
 
 
 def make_fallback_devotional_music(category: str) -> Path:
@@ -174,7 +170,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 
 def main():
-    required = ["GEMINI_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
+    required = ["GEMINI_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
@@ -189,36 +185,38 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
     scene = PALM_SCENES[category]
 
+    # Narrative prompt based on Google's image-prompt guidance: describe the actual
+    # scene and composition instead of relying on disconnected keyword lists.
     image_prompt = f"""
-Photorealistic high-end macro photograph of ONE real human open palm, wrist and five fingers, palm facing the camera, portrait 2:3 composition. The hand fills almost the whole frame.
+Use Google Image Search to study the visual language of real handmade blue-ballpoint palm-art photographs and miniature pilgrimage-map drawings on human hands. Then create an ORIGINAL photograph, not a copy of any single reference.
 
-STYLE: genuine handmade blue/indigo ballpoint-pen palm art photographed on real skin. Thousands of ultra-fine pen strokes, cross-hatching, stippling, tiny architectural linework, natural ink pressure variation. Real skin pores, creases and wrinkles remain visible. This must look physically drawn by a skilled pen artist, never digitally printed.
+Show one anatomically correct adult human hand, palm facing the camera, wrist visible, five fingers and thumb, photographed straight-on as a premium macro photograph on a clean white tabletop. The hand itself is the artwork: a skilled artist has spent many hours physically drawing an extraordinarily dense miniature devotional pilgrimage world directly onto the skin with a blue and indigo ballpoint pen.
 
-SUBJECT: {scene}
+The drawing should behave like one continuous illustrated map. It starts on the wrist, travels through the palm, follows the natural creases, continues into the thumb and spreads across every finger. Almost every visible part of the skin is filled with connected fine linework. There are hundreds of tiny visual elements rather than a single large subject: mountain ridges, winding rivers, stairs, bridges, ghats, tiny temples, shrines, trees, animals, pilgrims, paths, clouds and small devotional scenes. Use fine cross-hatching, stippling, parallel contour lines, tiny architectural details and natural variation in ballpoint pressure. Keep real skin pores, creases and wrinkles visible underneath the ink so it looks genuinely hand-drawn on living skin.
 
-MOST IMPORTANT: create ONE SINGLE CONTINUOUS MINIATURE WORLD across the wrist, entire palm, thumb and ALL FIVE FINGERS. The artwork must flow across the natural hand creases like a detailed pilgrimage MAP. Cover roughly 90-95% of visible skin with dense connected blue linework. There must be almost no large blank skin areas. Each finger must be filled with tiny connected scenery: mountain ridges, temples, stairs, rivers, bridges, trees, pilgrims, animals, paths and tiny devotional scenes. Use dozens of tiny scenes instead of one large subject.
+{scene}
 
-DO NOT make a large Krishna/Shiva/Hanuman/Ram/Mata portrait. Any deity must be a tiny element inside the miniature landscape, occupying only a small area. The visual focus is the dense handcrafted MAP-LIKE PEN ART covering the whole hand.
+The deity-related scene is only a small detail inside this miniature landscape; NEVER make a giant deity portrait or giant face. The dominant visual impression must be an extremely dense blue-ink pilgrimage map covering the whole hand from wrist through all fingers. The hand should look like a real photograph of an artist's finished ballpoint masterpiece, not an AI illustration.
 
-Natural white paper/tabletop background with a few real blue and black ballpoint pens around the edges. Soft daylight, realistic shadows, sharp macro focus, authentic photography, highly detailed skin and ink texture.
+Composition: vertical 9:16, hand large in frame, realistic anatomy, natural fingers, shallow macro depth of field, soft daylight, realistic shadows. Place two or three real blue/black ballpoint pens casually near the hand on the white surface. Blue and indigo ink only.
 
-NEGATIVE: large deity portrait, giant face, giant figure, floating deity, 3D object, deity emerging from palm, tattoo, sticker, printed graphic, digital art, CGI, cartoon, vector, sparse symbols, isolated icons, empty palm, blank fingers, colored paint, black-only ink, parchment, paper hand, collage, panels, borders, watermark, logo, text, extra fingers, malformed hand.
+Do not turn the drawing into a tattoo, printed skin, sticker, digital graphic, CGI, cartoon, 3D object, sparse icons, isolated symbols, a large central portrait, blank fingers, large blank palm areas, colored painting, parchment, paper hand, collage, poster, border, logo or watermark. Do not add large text.
 """.strip()
 
     image = WORK / "palm_art.png"
     video = WORK / "bhakti_reel.mp4"
-    generate_flux_image(image_prompt, image)
+    generate_gemini_image(image_prompt, image)
     music = choose_music(category)
     make_video(image, music, video)
 
     if os.getenv("TEST_ONLY", "false").lower() == "true":
         print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video)}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "gemini-3.1-flash-image"}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "music": music.name, "facebook": fb, "youtube_video_id": yt}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "music": music.name, "facebook": fb, "youtube_video_id": yt, "image_model": "gemini-3.1-flash-image"}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
