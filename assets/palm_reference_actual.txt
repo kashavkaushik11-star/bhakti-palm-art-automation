@@ -1,1 +1,0 @@
-Reference image binary upload is handled in the repository workflow setup.
