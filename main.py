@@ -111,7 +111,7 @@ def generate_reference_guided_image(prompt: str, output: Path):
 
     import base64
 
-    # Cloudflare Workers AI Stable Diffusion 1.5 img2img accepts the reference
+    # Cloudflare Workers AI SDXL-Lightning img2img accepts the reference
     # image directly as base64 and returns the generated PNG as base64.
     image_b64 = base64.b64encode(REFERENCE.read_bytes()).decode("ascii")
     payload = {
@@ -133,7 +133,7 @@ def generate_reference_guided_image(prompt: str, output: Path):
     last_error = None
     url = (
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img"
+        "/ai/run/@cf/bytedance/stable-diffusion-xl-lightning"
     )
 
     for attempt in range(3):
