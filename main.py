@@ -4,40 +4,58 @@ import random
 import shutil
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from gradio_client import Client
+from gradio_client import Client, handle_file
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
 MUSIC = ROOT / "music"
-REFERENCE = ROOT / "palm_reference.jpg.jpg"  # Kept in repo for human visual reference only; NOT sent to the model.
+REFERENCE = ROOT / "palm_reference.jpg.jpg"
 WORK.mkdir(exist_ok=True)
 
 TOPICS = [
-    ("श्री कृष्ण", "कृष्ण", "हे कृष्ण, अपने भक्तों के जीवन में प्रेम, शांति और भक्ति का प्रकाश भर दो।", "krishna"),
-    ("महादेव", "शिव", "हर हर महादेव। महादेव की भक्ति मन को शक्ति, धैर्य और शांति देती है।", "shiv"),
-    ("श्री हनुमान", "हनुमान", "जय बजरंगबली। श्री हनुमान की भक्ति साहस और विश्वास की प्रेरणा देती है।", "hanuman"),
-    ("श्री राम", "राम", "श्री राम का नाम मन को मर्यादा, शांति और सत्य के मार्ग की याद दिलाता है।", "ram"),
-    ("माता रानी", "माता", "जय माता दी। माँ की भक्ति में विश्वास, शक्ति और करुणा का भाव है।", "mata"),
+    ("श्री कृष्ण — वृंदावन", "कृष्ण", "कृष्ण भक्ति", "krishna", "वृंदावन, यमुना घाट, गोवर्धन पर्वत, छोटी-छोटी कृष्ण मंदिरों की झलक, गायें, भक्त"),
+    ("महादेव — तुंगनाथ", "शिव", "शिव भक्ति", "shiv", "तुंगनाथ मंदिर, हिमालय, बर्फीली चोटियाँ, पत्थर की सीढ़ियाँ, पहाड़ी झरना, तीर्थयात्री"),
+    ("श्री हनुमान", "हनुमान", "हनुमान भक्ति", "hanuman", "हनुमान मंदिर, पर्वतीय वन, रामसेतु की प्रतीकात्मक झलक, भक्त और दीपक"),
+    ("श्री राम — अयोध्या", "राम", "राम भक्ति", "ram", "अयोध्या, सरयू घाट, मंदिर, दीपों की पंक्तियाँ, रामायण से जुड़े छोटे दृश्य"),
+    ("माँ वैष्णो देवी", "माता", "माता भक्ति", "mata", "वैष्णो देवी यात्रा मार्ग, पहाड़, सीढ़ियाँ, गुफा मंदिर, लाल ध्वज और भक्त"),
+    ("केदारनाथ", "शिव", "केदारनाथ भक्ति", "shiv", "केदारनाथ मंदिर, हिमालय, मंदाकिनी, बर्फीली चोटियाँ, तीर्थयात्री"),
+    ("काशी विश्वनाथ", "शिव", "काशी भक्ति", "shiv", "काशी विश्वनाथ मंदिर, गंगा घाट, नावें, दीपदान और संकरी प्राचीन गलियाँ"),
+    ("जगन्नाथ पुरी", "जगन्नाथ", "जगन्नाथ भक्ति", "krishna", "जगन्नाथ मंदिर, रथ, समुद्र तट, भक्तों की यात्रा और मंदिर ध्वज"),
+    ("सोमनाथ", "शिव", "सोमनाथ भक्ति", "shiv", "सोमनाथ मंदिर, अरब सागर, सूर्यास्त, तट और मंदिर की वास्तुकला"),
+    ("बद्रीनाथ", "विष्णु", "बद्रीनाथ भक्ति", "krishna", "बद्रीनाथ मंदिर, अलकनंदा, हिमालय, तप्त कुंड और तीर्थयात्री"),
+    ("रामायण — वनवास", "राम", "रामायण", "ram", "वन मार्ग, कुटिया, नदी, वन्यजीवन और श्री राम-सीता-लक्ष्मण की सूक्ष्म कथात्मक झलक"),
+    ("महाभारत — कुरुक्षेत्र", "कृष्ण", "महाभारत", "krishna", "कुरुक्षेत्र, रथ, गीता उपदेश की प्रतीकात्मक झलक, युद्धभूमि और दूर खड़े योद्धा"),
+    ("भगवद्गीता — श्री कृष्ण", "कृष्ण", "गीता ज्ञान", "krishna", "कुरुक्षेत्र का रथ, श्री कृष्ण और अर्जुन की सूक्ष्म दृश्यात्मक झलक, दिव्य प्रकाश"),
+    ("गंगा आरती — हरिद्वार", "गंगा", "गंगा भक्ति", "mata", "हर की पौड़ी, गंगा आरती, दीप, घाट, भक्त और बहती गंगा"),
+    ("नटराज — शिव तांडव", "शिव", "शिव तांडव", "shiv", "नटराज की दिव्य मुद्रा, कैलाश, डमरू, त्रिशूल, पर्वत और ऊर्जा की लहरें"),
+    ("राधा-कृष्ण प्रेम", "राधा-कृष्ण", "राधा कृष्ण भक्ति", "krishna", "वृंदावन की गलियाँ, कुंज, यमुना, बांसुरी, मोर और राधा-कृष्ण की सूक्ष्म झलक"),
+    ("गणेश जी", "गणेश", "गणेश भक्ति", "mata", "गणेश मंदिर, मोदक, दीप, पुष्प, छोटे भक्त और उत्सव का वातावरण"),
+    ("नवरात्रि — माँ दुर्गा", "दुर्गा", "दुर्गा भक्ति", "mata", "माँ दुर्गा का मंदिर, सिंह, त्रिशूल, दीप, पुष्प और पर्वतीय मंदिर परिसर"),
+    ("श्री श्याम बाबा", "श्याम", "श्याम भक्ति", "krishna", "खाटू श्याम मंदिर, ध्वज, भक्तों की यात्रा, पुष्प और मंदिर प्रांगण"),
+    ("चार धाम यात्रा", "विष्णु", "चार धाम", "krishna", "हिमालयी तीर्थ मार्ग, मंदिर, नदियाँ, पर्वत, पुल और तीर्थयात्रियों की यात्रा"),
 ]
 
-PALM_SCENES = {
-    "krishna": "Vrindavan and Mathura pilgrimage, Yamuna river, ancient ghats, Govardhan hill, cows, trees, tiny Krishna temples and many tiny pilgrims",
-    "shiv": "Tungnath Temple pilgrimage in Uttarakhand, Himalayan snow peaks, steep stone trail, ancient stone Tungnath Shiva temple, small mountain shrine, stone steps, rocky slopes, winding mountain stream, alpine meadows and many tiny pilgrims",
-    "hanuman": "Ayodhya and Ram-Hanuman pilgrimage, river, forest, stone bridge, distant mountain, tiny temples and many tiny pilgrims",
-    "ram": "Ayodhya and Ramayana pilgrimage, Sarayu river, ghats, forest paths, stone bridge, tiny temples, villages and many tiny pilgrims",
-    "mata": "Himalayan Mata Rani pilgrimage, steep mountain valley, long stairway, shrine, temple flags, rocky terrain and many tiny devotees",
-}
-
+def choose_topic():
+    if os.getenv("GITHUB_EVENT_NAME") == "schedule":
+        now = datetime.now(timezone.utc)
+        slot_map = {5: 0, 8: 1, 11: 2}
+        slot = slot_map.get(now.hour, now.hour % 3)
+        index = (now.date().toordinal() * 3 + slot) % len(TOPICS)
+        return TOPICS[index]
+    return random.choice(TOPICS)
 
 def gemini_text(prompt: str) -> str:
-    key = os.environ["GEMINI_API_KEY"]
-    models = ["gemini-2.5-flash-lite", "gemini-3-flash-preview"]
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY not configured; using local caption fallback.")
+    models = ["gemini-3.1-flash-lite", "gemini-3-flash-preview"]
     last_error = None
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
@@ -59,42 +77,58 @@ def gemini_text(prompt: str) -> str:
             time.sleep(min(5 * (attempt + 1), 15))
     raise RuntimeError(f"Gemini text generation failed: {last_error}")
 
+def _first_local_file(value):
+    if value is None:
+        return None
+    if isinstance(value, (str, Path)):
+        p = Path(str(value))
+        return p if p.exists() else None
+    if isinstance(value, dict):
+        for key in ("path", "url"):
+            if key in value and value[key]:
+                p = Path(str(value[key]))
+                if p.exists():
+                    return p
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            found = _first_local_file(item)
+            if found:
+                return found
+    return None
 
-def generate_qwen_image(prompt: str, output: Path):
+def generate_reference_guided_image(prompt: str, output: Path):
     token = os.environ.get("HF_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
-
-    # Use Qwen's official public Hugging Face ZeroGPU Space instead of
-    # Hugging Face Inference Providers. This avoids the exhausted monthly
-    # Inference-Provider credits shown in the failed GitHub run.
     last_error = None
     for attempt in range(3):
         try:
-            client = Client("Qwen/Qwen-Image", token=token)
+            client = Client("Qwen/Qwen-Image-Edit-2509", token=token)
             result = client.predict(
-                prompt,
-                0,
-                True,
-                "9:16",
-                4.0,
-                30,
-                False,
+                images=[(handle_file(str(REFERENCE)), None)],
+                prompt=prompt,
+                seed=0,
+                randomize_seed=True,
+                true_guidance_scale=4.0,
+                num_inference_steps=32,
+                height=1920,
+                width=1080,
+                rewrite_prompt=False,
+                num_images_per_prompt=1,
                 api_name="/infer",
             )
             image_result = result[0] if isinstance(result, (tuple, list)) else result
-            source = Path(str(image_result))
-            if not source.exists():
-                raise RuntimeError(f"Qwen ZeroGPU returned an unexpected image result: {image_result}")
+            source = _first_local_file(image_result)
+            if not source:
+                raise RuntimeError(f"Qwen Image Edit returned an unexpected result: {image_result}")
             shutil.copyfile(source, output)
-            print("Image generated with Qwen/Qwen-Image through the official Hugging Face ZeroGPU Space (9:16).")
+            print("Image generated with Qwen-Image-Edit-2509 using the Palm-Art reference image.")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Qwen ZeroGPU attempt {attempt + 1}/3 failed: {last_error}")
-            time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"Qwen/Qwen-Image ZeroGPU generation failed: {last_error}")
-
+            print(f"Qwen Image Edit attempt {attempt + 1}/3 failed: {last_error}")
+            time.sleep(min(12 * (attempt + 1), 36))
+    raise RuntimeError(f"Qwen-Image-Edit-2509 generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -105,21 +139,59 @@ def make_fallback_devotional_music(category: str) -> Path:
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     return output
 
-
 def choose_music(category: str) -> Path:
     files = list(MUSIC.glob("*.mp3")) + list(MUSIC.glob("*.wav")) + list(MUSIC.glob("*.m4a"))
     if files:
         matches = [p for p in files if category.lower() in p.stem.lower()]
         return random.choice(matches or files)
-    print("No licensed track found in music/. Using generated devotional instrumental fallback for this test run.")
+    print("No music file found in music/. Using generated devotional instrumental fallback.")
     return make_fallback_devotional_music(category)
 
+def generate_wan_video(image: Path, prompt: str, output: Path):
+    token = os.environ.get("HF_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
+    negative = "flicker, morphing, deformation, distorted hand, extra fingers, missing fingers, melting ink, changing text, changing composition, blurry, low quality, watermark, camera shake, sudden zoom, new objects, duplicated objects"
+    last_error = None
+    for attempt in range(3):
+        try:
+            client = Client("kulkas2pintu/wan555", token=token)
+            result = client.predict(
+                input_image=handle_file(str(image)),
+                last_image=None,
+                prompt=prompt,
+                steps=8,
+                negative_prompt=negative,
+                duration_seconds=4.5,
+                guidance_scale=1.0,
+                guidance_scale_2=1.0,
+                seed=0,
+                randomize_seed=True,
+                quality=10,
+                scheduler="UniPCMultistep",
+                flow_shift=3.0,
+                frame_multi=1,
+                play_result_video=True,
+                safe_mode=True,
+                api_name="/generate_video",
+            )
+            video_result = result[0] if isinstance(result, (tuple, list)) else result
+            source = _first_local_file(video_result)
+            if not source:
+                raise RuntimeError(f"Wan2.2 returned an unexpected result: {video_result}")
+            shutil.copyfile(source, output)
+            print("Video generated with Wan2.2 14B I2V Fast Preview.")
+            return
+        except Exception as exc:
+            last_error = str(exc)
+            print(f"Wan2.2 attempt {attempt + 1}/3 failed: {last_error}")
+            time.sleep(min(15 * (attempt + 1), 45))
+    raise RuntimeError(f"Wan2.2 I2V generation failed: {last_error}")
 
-def make_video(image: Path, music: Path, output: Path):
-    vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0005,1.08)':d=300:s=1080x1920:fps=30,format=yuv420p"
-    cmd = ["ffmpeg", "-y", "-loop", "1", "-i", str(image), "-i", str(music), "-t", "10", "-vf", vf, "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", str(output)]
+def make_video(generated_video: Path, music: Path, output: Path):
+    vf = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p"
+    cmd = ["ffmpeg", "-y", "-i", str(generated_video), "-i", str(music), "-t", "10", "-vf", vf, "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", str(output)]
     subprocess.run(cmd, check=True)
-
 
 def facebook_reel(video: Path, title: str, description: str):
     page = os.environ["FACEBOOK_PAGE_ID"].strip()
@@ -146,7 +218,6 @@ def facebook_reel(video: Path, title: str, description: str):
         raise RuntimeError(f"Facebook Reel publish failed ({finish.status_code}): {finish.text[:2000]}")
     return finish.json()
 
-
 def youtube_upload(video: Path, title: str, description: str):
     creds = Credentials(None, refresh_token=os.environ["YOUTUBE_REFRESH_TOKEN"], token_uri="https://oauth2.googleapis.com/token", client_id=os.environ["YOUTUBE_CLIENT_ID"], client_secret=os.environ["YOUTUBE_CLIENT_SECRET"], scopes=["https://www.googleapis.com/auth/youtube.upload"])
     youtube = build("youtube", "v3", credentials=creds)
@@ -157,55 +228,71 @@ def youtube_upload(video: Path, title: str, description: str):
         _, response = request.next_chunk()
     return response.get("id")
 
-
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["GEMINI_API_KEY", "HF_TOKEN"]
+    required = ["HF_TOKEN"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
 
-    topic, deity, message, category = random.choice(TOPICS)
-    title = f"🙏 {topic} | भक्ति संदेश"
+    topic, deity, category, music_category, scene = choose_topic()
+    title = f"🙏 {topic} | Bhakti Palm Art"
+    fallback_caption = f"{category} — {deity} की भक्ति से मन में शांति, शक्ति और विश्वास का प्रकाश।"
     try:
-        generated_caption = gemini_text(f"Write a short devotional Hindi caption for a Reel about {topic}. Mention {deity}. Return only the caption.")
+        generated_caption = gemini_text(f"Write one short, beautiful Hindi devotional caption for a social media Reel about {topic}. Keep it respectful, spiritual and concise. Return only the caption.")
     except Exception as exc:
-        print(f"Gemini text unavailable; using local caption: {exc}")
-        generated_caption = message
+        print(f"Gemini caption unavailable; using local caption: {exc}")
+        generated_caption = fallback_caption
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
-    scene = PALM_SCENES[category]
 
-    image_prompt = f"""Create a completely NEW photorealistic macro photograph of a real human hand resting palm-up on clean white paper, with realistic skin pores, palm creases, wrist, natural nails and exactly five separated fingers.
+    image_prompt = f"""
+Use the supplied Palm-Art reference image ONLY as a visual style, medium and composition reference.
+Do NOT preserve the specific Kedarnath subject, landmarks, written text, or exact artwork from the reference.
 
-The hand is covered by an ORIGINAL, extremely dense handmade blue/indigo ballpoint-pen pilgrimage-map drawing directly on the skin. Cover about 90 percent of the visible skin. Continue the artwork across the palm, wrist, thumb and ALL five fingers almost to every fingertip; every finger must contain substantial fine artwork and must not be blank.
+Create a completely NEW vertical 9:16 macro photograph of a real human hand resting palm-up on clean white paper.
+Keep the same Palm-Art concept: a real hand covered with extremely dense handmade blue/indigo ballpoint-pen artwork,
+fine hatching, cross-hatching, stippling, miniature pilgrimage-map storytelling, realistic skin pores and palm creases,
+natural nails, exactly five separated fingers, and 2-3 real blue/black ballpoint pens beside the hand.
 
-The artwork is one connected miniature pilgrimage world made of tiny contour lines, mountains, winding rivers and streams, bridges, long stairways, ghats, tiny temples and shrines, small houses, trees, animals and many tiny pilgrims. Use fine blue/indigo ballpoint hatching, cross-hatching and stippling with intricate handmade linework. Keep landmarks tiny, numerous and tightly packed. Theme: {scene}.
+NEW DEVOTIONAL SUBJECT FOR THIS CREATION: {topic}.
+Build the entire tiny connected pilgrimage world around this theme: {scene}.
+Make the chosen landmark and story recognizable but small and integrated into the hand drawing.
+Every finger should contain substantial fresh artwork. Fill most visible skin with intricate blue pen linework.
 
-For the Shiva/Tungnath scene, make the Tungnath stone temple clearly recognizable as a small ancient Himalayan Kedarnath-style stone shrine, with a simple dark stone facade, compact sanctum, small entrance steps and snow-covered Himalayan peaks behind it. Keep the temple integrated into the tiny pilgrimage-map artwork rather than making it giant.
-
-Place 2-3 real blue/black ballpoint pens beside the hand on the white paper. The result must look like a genuine close-up photograph of an expert pen artist who created a NEW drawing directly on a real hand.
-
-CRITICAL: This is a TEXT-TO-IMAGE generation. Do not reproduce any existing image. Invent a fresh hand composition and completely fresh artwork for the chosen pilgrimage scene. The desired medium is only dense blue ballpoint pen art on real skin; the actual map, landmarks, people, layout and linework must be newly invented.
-
-Do NOT make it a tattoo, sticker, printed glove, CGI render, cartoon, vector art or sparse symbols. Do NOT create extra or malformed fingers, giant objects, giant faces, colored ink, logos, watermarks or large text. No blank fingers. No large single landmark dominating the hand."""
+The composition, objects, landmarks, people, scenery and linework must be newly invented for this creation.
+The reference is for STYLE ONLY, not for copying content.
+No tattoo, sticker, printed glove, CGI, vector art, sparse symbols, giant landmark, giant face,
+extra fingers, malformed fingers, blank fingers, colored ink, watermark or large text.
+Photorealistic macro photography, premium editorial detail, sharp ink strokes, realistic skin texture, dramatic but natural lighting.
+"""
+    motion_prompt = f"""
+Animate this Palm-Art illustration as a premium devotional cinematic short about {topic}.
+Preserve the exact hand, finger geometry, blue-ink artwork and composition of the generated image.
+Create subtle believable motion inside the drawing: tiny pilgrims slowly walking, water gently flowing where present,
+clouds drifting, temple flags moving softly, tiny lamps flickering and a very subtle divine glow.
+Use a slow cinematic push-in with stable framing. Keep all ink lines crisp and coherent.
+Do not redraw the hand or replace the artwork. Do not introduce new objects.
+"""
 
     image = WORK / "palm_art.png"
+    raw_video = WORK / "wan2_video.mp4"
     video = WORK / "bhakti_reel.mp4"
-    generate_qwen_image(image_prompt, image)
-    music = choose_music(category)
-    make_video(image, music, video)
+
+    generate_reference_guided_image(image_prompt, image)
+    generate_wan_video(image, motion_prompt, raw_video)
+    music = choose_music(music_category)
+    make_video(raw_video, music, video)
 
     if test_only:
-        print("TEST_ONLY=true: image/video generated but NOT posted to Facebook or YouTube.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Qwen/Qwen-Image via ZeroGPU Space", "reference_used_as_input": False}, ensure_ascii=False))
+        print("TEST_ONLY=true: generated but NOT posted.")
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Qwen/Qwen-Image-Edit-2509", "video_model": "Wan2.2 14B I2V Fast Preview", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Qwen/Qwen-Image via ZeroGPU Space", "reference_used_as_input": False}, ensure_ascii=False))
-
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Qwen/Qwen-Image-Edit-2509", "video_model": "Wan2.2 14B I2V Fast Preview", "reference_used_as_style_input": True}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
