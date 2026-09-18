@@ -179,24 +179,32 @@ def generate_reference_guided_image(prompt: str, output: Path):
     # Cloudflare's live model limit.
     compact_style = " ".join(style_text.split())[:400]
     compact_subject = " ".join(prompt.split())[:500]
-    generation_prompt = f"""Create a completely NEW vertical 9:16 devotional Palm-Art photograph.
+    generation_prompt = f"""Create a completely NEW vertical 9:16 photograph of authentic handmade Palm-Art.
 
 STYLE: {compact_style}
-
 NEW DEVOTIONAL SUBJECT: {compact_subject}
 
-Show a real human hand resting palm-up on clean white paper, exactly five natural fingers.
-Cover the palm and every finger with extremely dense handmade blue/indigo ballpoint-pen artwork.
-Use fine hatching, cross-hatching, stippling and tiny connected storytelling scenes related to
-the devotional subject. Keep landmarks and figures small and integrated into the hand drawing.
-Make the hand photorealistic with visible skin pores, palm creases and natural nails. Include
-2-3 real blue/black ballpoint pens beside the hand. Premium macro editorial photography,
-sharp ink detail and natural lighting.
+CRITICAL MEDIUM — this must look like a real artist manually drew with a BLUE BALLPOINT PEN directly on a real human palm.
+The reference style is dense handwritten pen illustration, not tattoo art. Use thousands of very thin, imperfect, hand-drawn
+blue/indigo pen strokes: fine hatching, cross-hatching, stippling, contour lines, tiny sketch marks, varied pressure,
+overlapping strokes and miniature connected scenes. The ink must visibly follow the natural creases and contours of the skin.
+Fill almost the entire visible palm and substantial areas of ALL FIVE fingers with continuous detailed pen drawing.
+Avoid large solid blue shapes and avoid isolated tattoo-like symbols. Every area should contain fine pen texture and
+small narrative details, like an intricate hand-drawn travel sketchbook compressed onto the palm.
 
-The artwork must be completely new. Do not copy the reference subject, landmark, text,
-signature, exact objects or exact composition. No tattoo, sticker, printed glove, CGI, vector
-art, sparse symbols, giant landmark, giant face, extra/malformed fingers, blank fingers,
-colored ink, watermark or large text."""
+Show one real adult human hand, palm facing the camera, naturally relaxed and resting on clean white paper.
+Exactly five anatomically normal fingers, with realistic skin pores, creases and natural nails.
+Place 2-3 real blue/black ballpoint pens beside the hand. Premium macro editorial photograph, sharp focus on the ink,
+natural skin texture, realistic lighting, subtle depth of field.
+
+The devotional scene must be completely NEW and related to the new subject, with tiny temples, landscapes, pilgrims,
+deity/story elements and environmental details integrated into the pen drawing rather than appearing as separate stickers.
+Do NOT copy the reference's specific subject, landmark, text, signature, objects, or exact composition.
+
+ABSOLUTELY NO tattoo, henna, mehndi, permanent body art, sticker, decal, printed glove, digital overlay, airbrush,
+vector illustration, CGI, smooth logo, thick marker, solid icon bands, sparse symbols, giant landmark, giant face,
+blank fingers, extra fingers, malformed fingers, colored ink, watermark or large readable text.
+The final image must convincingly look like a real photograph of a real palm covered in painstakingly handwritten blue ballpoint-pen art."""
 
 
     flux_url = (
