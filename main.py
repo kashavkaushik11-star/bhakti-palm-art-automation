@@ -178,41 +178,48 @@ def generate_wan_video(image: Path, prompt: str, output: Path):
     token = os.environ.get("HF_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
-    negative = "flicker, morphing, deformation, distorted hand, extra fingers, missing fingers, melting ink, changing text, changing composition, blurry, low quality, watermark, camera shake, sudden zoom, new objects, duplicated objects"
+
+    # Use a currently running Wan 2.2 14B I2V Fast Preview Space.
+    # The previous kulkas2pintu/wan555 Space now returns 404.
     last_error = None
+    negative = "flicker, morphing, deformation, distorted hand, extra fingers, missing fingers, melting ink, changing text, changing composition, blurry, low quality, watermark, camera shake, sudden zoom, new objects, duplicated objects"
+
     for attempt in range(3):
         try:
-            client = Client("kulkas2pintu/wan555", token=token)
+            client = Client("r3gm/wan2-2-fp8da-aoti-preview", token=token)
             result = client.predict(
                 input_image=handle_file(str(image)),
                 last_image=None,
                 prompt=prompt,
-                steps=8,
+                steps=6,
                 negative_prompt=negative,
                 duration_seconds=4.5,
                 guidance_scale=1.0,
                 guidance_scale_2=1.0,
                 seed=0,
                 randomize_seed=True,
-                quality=10,
+                quality=8,
                 scheduler="UniPCMultistep",
                 flow_shift=3.0,
-                frame_multi=2,
-                play_result_video=True,
-                safe_mode=True,
                 api_name="/generate_video",
             )
+
             video_result = result[0] if isinstance(result, (tuple, list)) else result
             source = _first_local_file(video_result)
             if not source:
-                raise RuntimeError(f"Wan2.2 returned an unexpected result: {video_result}")
+                raise RuntimeError(f"Wan2.2 returned an unexpected result: {result}")
+
             shutil.copyfile(source, output)
+            if output.stat().st_size < 10000:
+                raise RuntimeError("Wan2.2 returned an unexpectedly small video file.")
+
             print("Video generated with Wan2.2 14B I2V Fast Preview.")
             return
         except Exception as exc:
             last_error = str(exc)
             print(f"Wan2.2 attempt {attempt + 1}/3 failed: {last_error}")
             time.sleep(min(15 * (attempt + 1), 45))
+
     raise RuntimeError(f"Wan2.2 I2V generation failed: {last_error}")
 
 def make_video(generated_video: Path, music: Path, output: Path):
