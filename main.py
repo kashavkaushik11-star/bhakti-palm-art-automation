@@ -114,7 +114,7 @@ def generate_reference_guided_image(prompt: str, output: Path):
 
     reference_data_url = f"data:image/jpeg;base64,{reference_b64}"
     payload = {
-        "model": "recraft/recraft-v4.1-utility-pro:free",
+        "model": "recraft/recraft-v3:free",
         "prompt": prompt,
         "input_references": [
             {
@@ -154,7 +154,7 @@ def generate_reference_guided_image(prompt: str, output: Path):
             if output.stat().st_size < 10000:
                 raise RuntimeError("OpenRouter returned an unexpectedly small image file.")
             cost = data.get("usage", {}).get("cost")
-            print(f"Image generated with OpenRouter Recraft V4.1 Utility Pro Free. Reported cost: {cost}")
+            print(f"Image generated with OpenRouter Recraft V3 Free. Reported cost: {cost}")
             return
         except Exception as exc:
             last_error = str(exc)
