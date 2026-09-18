@@ -111,88 +111,158 @@ def generate_reference_guided_image(prompt: str, output: Path):
 
     import base64
 
-    # Cloudflare Workers AI SDXL-Lightning img2img accepts the reference
-    # image directly as base64 and returns the generated PNG as base64.
+    # Cloudflare's currently documented SDXL/Lightning endpoints expose the
+    # img2img fields in the schema, but the live backend can reject the image
+    # tensor with ERROR 3030. We therefore use a reliable two-stage pipeline:
+    # 1) LLaVA reads the reference and extracts STYLE ONLY.
+    # 2) Flux.1 Schnell generates a completely new image from that style blueprint.
+    # This keeps the reference influential without depending on the broken
+    # img2img backend path.
     reference_bytes = REFERENCE.read_bytes()
-    image_b64 = base64.b64encode(reference_bytes).decode("ascii")
-    payload = {
-        "prompt": prompt,
-        "negative_prompt": (
-            "tattoo, sticker, printed glove, CGI, vector art, sparse symbols, giant landmark, "
-            "giant face, extra fingers, malformed fingers, missing fingers, blank fingers, "
-            "colored ink, watermark, large text, low detail, blurry, deformed hand"
-        ),
-        # Cloudflare's model schema accepts img2img input as either image_b64
-        # or an 8-bit integer image array. Send both for REST compatibility.
-        "image_b64": image_b64,
+
+    vision_url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
+        "/ai/run/@cf/llava-hf/llava-1.5-7b-hf"
+    )
+    vision_payload = {
         "image": list(reference_bytes),
-        "height": 1536,
-        "width": 864,
-        "num_steps": 20,
-        "strength": 0.68,
-        "guidance": 7.5,
-        "seed": random.randint(1, 2_000_000_000),
+        "prompt": (
+            "Analyze this reference image ONLY for its visual STYLE and medium. "
+            "Do not describe or preserve its specific religious subject, landmark, "
+            "written names, exact composition, or exact objects. Return a concise "
+            "style blueprint covering: real hand photography, palm/finger treatment, "
+            "blue ballpoint pen technique, density of linework, hatching, stippling, "
+            "paper/background, camera/macro look, lighting and realism. "
+            "This blueprint will be used to create a completely NEW devotional artwork."
+        ),
+        "max_tokens": 400,
     }
 
-    last_error = None
-    url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/bytedance/stable-diffusion-xl-lightning"
-    )
-
+    style_text = ""
     for attempt in range(3):
         try:
-            r = requests.post(
-                url,
+            vr = requests.post(
+                vision_url,
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
                 },
-                json=payload,
+                json=vision_payload,
+                timeout=180,
+            )
+            if vr.ok:
+                vd = vr.json()
+                result = vd.get("result", vd)
+                if isinstance(result, dict):
+                    style_text = result.get("description") or result.get("response") or result.get("text") or ""
+                elif isinstance(result, str):
+                    style_text = result
+                if style_text.strip():
+                    break
+            else:
+                print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {vr.text[:1200]}")
+        except Exception as exc:
+            print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {exc}")
+        if attempt < 2:
+            time.sleep(min(5 * (attempt + 1), 15))
+
+    if not style_text.strip():
+        style_text = (
+            "Photorealistic macro photograph of a real palm-up human hand on clean white paper; "
+            "dense handmade blue and indigo ballpoint-pen artwork covering the palm and all five fingers; "
+            "fine cross-hatching, hatching and stippling; intricate miniature storytelling; realistic skin pores, "
+            "creases and natural nails; a few real ballpoint pens beside the hand; sharp ink detail; natural editorial lighting."
+        )
+
+    generation_prompt = f"""
+Create a COMPLETELY NEW vertical devotional Palm-Art photograph.
+
+REFERENCE STYLE BLUEPRINT:
+{style_text[:5000]}
+
+IMPORTANT: The reference image is NOT being copied. Do not reproduce its subject, landmark,
+written text, signature, exact objects, or exact composition. Invent a fresh scene.
+
+NEW DEVOTIONAL SUBJECT:
+{prompt}
+
+The final image must show a real human hand resting palm-up on clean white paper, exactly five
+natural fingers, with extremely dense handmade blue/indigo ballpoint-pen artwork covering the palm
+and every finger. The artwork should tell the new devotional story through tiny connected scenes,
+pilgrims, architecture, nature and symbolic details integrated into the pen drawing. Keep the
+devotional subject small enough to remain believable as hand artwork, not a giant poster.
+
+Photorealistic macro photography, realistic skin pores and palm creases, natural nails, crisp ink
+strokes, fine hatching, cross-hatching and stippling, premium editorial detail, natural lighting.
+Include 2-3 real blue/black ballpoint pens beside the hand.
+
+Do not create a tattoo, sticker, printed glove, CGI render, vector illustration, sparse symbols,
+giant landmark, giant face, extra fingers, malformed fingers, blank fingers, colored ink,
+watermark or large text.
+"""
+
+    flux_url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
+        "/ai/run/@cf/black-forest-labs/flux-1-schnell"
+    )
+    flux_payload = {
+        "prompt": generation_prompt,
+        "steps": 8,
+        "seed": random.randint(1, 2_000_000_000),
+    }
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            r = requests.post(
+                flux_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json=flux_payload,
                 timeout=300,
             )
             if not r.ok:
                 raise RuntimeError(
-                    f"Cloudflare image generation failed ({r.status_code}): {r.text[:2500]}"
+                    f"Cloudflare Flux image generation failed ({r.status_code}): {r.text[:2500]}"
                 )
 
-            content_type = r.headers.get("content-type", "").lower()
-            if content_type.startswith("image/"):
-                image_bytes = r.content
-            else:
-                data = r.json()
-                result = data.get("result")
-                if isinstance(result, dict):
-                    result = result.get("image") or result.get("image_b64") or result.get("data")
-                if not isinstance(result, str) or not result.strip():
-                    raise RuntimeError(
-                        f"Cloudflare returned no image result: {str(data)[:2500]}"
-                    )
+            data = r.json()
+            result = data.get("result", data)
+            image_b64 = result.get("image") if isinstance(result, dict) else None
+            if not image_b64:
+                raise RuntimeError(f"Cloudflare Flux returned no image: {str(data)[:2500]}")
 
-                raw = result.strip()
-                if raw.startswith("data:image"):
-                    raw = raw.split(",", 1)[1]
-                image_bytes = base64.b64decode(raw)
-
-            output.write_bytes(image_bytes)
+            output.write_bytes(base64.b64decode(image_b64))
             if output.stat().st_size < 10000:
-                raise RuntimeError("Cloudflare returned an unexpectedly small image file.")
+                raise RuntimeError("Cloudflare Flux returned an unexpectedly small image file.")
 
-            # Normalize the generated PNG so downstream FFmpeg always receives
-            # a normal RGB/RGBA image with the expected 9:16 orientation.
             with Image.open(output) as im:
                 im = ImageOps.exif_transpose(im)
-                if im.width != 864 or im.height != 1536:
-                    im = im.resize((864, 1536), Image.Resampling.LANCZOS)
+                # Flux Schnell currently returns a landscape image. Center-crop
+                # into the required portrait canvas without distorting the hand.
+                target_w, target_h = 864, 1536
+                target_ratio = target_w / target_h
+                src_ratio = im.width / im.height
+                if src_ratio > target_ratio:
+                    crop_w = int(im.height * target_ratio)
+                    left = (im.width - crop_w) // 2
+                    im = im.crop((left, 0, left + crop_w, im.height))
+                elif src_ratio < target_ratio:
+                    crop_h = int(im.width / target_ratio)
+                    top = (im.height - crop_h) // 2
+                    im = im.crop((0, top, im.width, top + crop_h))
+                im = im.resize((target_w, target_h), Image.Resampling.LANCZOS)
                 if im.mode not in ("RGB", "RGBA"):
                     im = im.convert("RGB")
                 im.save(output, format="PNG")
 
-            print("Image generated with Cloudflare Workers AI Stable Diffusion 1.5 img2img using Palm-Art reference.")
+            print("Image generated with Cloudflare LLaVA style analysis + Flux.1 Schnell.")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Cloudflare image attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"Cloudflare Flux image attempt {attempt + 1}/3 failed: {last_error}")
             if attempt < 2:
                 time.sleep(min(10 * (attempt + 1), 30))
 
@@ -345,7 +415,7 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Cloudflare Workers AI Stable Diffusion 1.5 img2img", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
