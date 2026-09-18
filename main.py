@@ -104,67 +104,89 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    token = os.environ.get("PIXAZO_API_KEY", "").strip()
-    if not token:
-        raise RuntimeError("Missing GitHub Secret: PIXAZO_API_KEY")
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+    if not account_id or not token:
+        raise RuntimeError("Missing GitHub Secrets: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN")
 
-    # GitHub-hosted reference image is public, so Pixazo can fetch it directly.
-    reference_url = "https://raw.githubusercontent.com/kashavkaushik11-star/bhakti-palm-art-automation/main/palm_reference.jpg.jpg"
+    import base64
 
+    # Cloudflare Workers AI Stable Diffusion 1.5 img2img accepts the reference
+    # image directly as base64 and returns the generated PNG as base64.
+    image_b64 = base64.b64encode(REFERENCE.read_bytes()).decode("ascii")
     payload = {
         "prompt": prompt,
         "negative_prompt": (
             "tattoo, sticker, printed glove, CGI, vector art, sparse symbols, giant landmark, "
-            "giant face, extra fingers, malformed fingers, blank fingers, colored ink, watermark, large text"
+            "giant face, extra fingers, malformed fingers, missing fingers, blank fingers, "
+            "colored ink, watermark, large text, low detail, blurry, deformed hand"
         ),
-        "image": reference_url,
-        "aspect_ratio": "9:16",
-        "cfg": 5,
-        "steps": 40,
-        "prompt_strength": 0.78,
-        "output_format": "webp",
-        "output_quality": 95,
+        "image_b64": image_b64,
+        "height": 1536,
+        "width": 864,
+        "num_steps": 20,
+        "strength": 0.68,
+        "guidance": 7.5,
+        "seed": random.randint(1, 2_000_000_000),
     }
 
     last_error = None
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
+        "/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img"
+    )
+
     for attempt in range(3):
         try:
             r = requests.post(
-                "https://gateway.pixazo.ai/sd3-5/v1/r-sd-3-5-large",
+                url,
                 headers={
+                    "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
-                    "Cache-Control": "no-cache",
-                    "Ocp-Apim-Subscription-Key": token,
                 },
                 json=payload,
                 timeout=300,
             )
             if not r.ok:
-                raise RuntimeError(f"Pixazo image generation failed ({r.status_code}): {r.text[:2000]}")
-
-            data = r.json()
-            image_url = data.get("output") or data.get("imageUrl")
-            if not image_url:
-                raise RuntimeError(f"Pixazo returned no image URL: {str(data)[:2000]}")
-
-            image_response = requests.get(image_url, timeout=180)
-            if not image_response.ok:
                 raise RuntimeError(
-                    f"Pixazo image download failed ({image_response.status_code}): {image_response.text[:1000]}"
+                    f"Cloudflare image generation failed ({r.status_code}): {r.text[:2500]}"
                 )
 
-            output.write_bytes(image_response.content)
-            if output.stat().st_size < 10000:
-                raise RuntimeError("Pixazo returned an unexpectedly small image file.")
+            data = r.json()
+            result = data.get("result")
+            if not isinstance(result, str) or not result.strip():
+                raise RuntimeError(
+                    f"Cloudflare returned no image result: {str(data)[:2500]}"
+                )
 
-            print("Image generated with Pixazo Stable Diffusion 3.5 (free preview) using Palm-Art reference.")
+            raw = result.strip()
+            if raw.startswith("data:image"):
+                raw = raw.split(",", 1)[1]
+
+            image_bytes = base64.b64decode(raw)
+            output.write_bytes(image_bytes)
+            if output.stat().st_size < 10000:
+                raise RuntimeError("Cloudflare returned an unexpectedly small image file.")
+
+            # Normalize the generated PNG so downstream FFmpeg always receives
+            # a normal RGB/RGBA image with the expected 9:16 orientation.
+            with Image.open(output) as im:
+                im = ImageOps.exif_transpose(im)
+                if im.width != 864 or im.height != 1536:
+                    im = im.resize((864, 1536), Image.Resampling.LANCZOS)
+                if im.mode not in ("RGB", "RGBA"):
+                    im = im.convert("RGB")
+                im.save(output, format="PNG")
+
+            print("Image generated with Cloudflare Workers AI Stable Diffusion 1.5 img2img using Palm-Art reference.")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Pixazo image attempt {attempt + 1}/3 failed: {last_error}")
-            time.sleep(min(10 * (attempt + 1), 30))
+            print(f"Cloudflare image attempt {attempt + 1}/3 failed: {last_error}")
+            if attempt < 2:
+                time.sleep(min(10 * (attempt + 1), 30))
 
-    raise RuntimeError(f"Pixazo image generation failed: {last_error}")
+    raise RuntimeError(f"Cloudflare image generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -256,7 +278,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["PIXAZO_API_KEY"]
+    required = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -313,12 +335,12 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Pixazo Stable Diffusion 3.5 Image-to-Image (free preview)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Cloudflare Workers AI Stable Diffusion 1.5 img2img", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Pixazo Stable Diffusion 3.5 Image-to-Image (free preview)", "video_model": "Wan2.2 14B I2V Fast Preview", "reference_used_as_style_input": True}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Pixazo Stable Diffusion 3.5 Image-to-Image (free preview)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
