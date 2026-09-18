@@ -33,13 +33,14 @@ jobs:
 
       - name: Run automation
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           TEST_ONLY: ${{ inputs.test_only || false }}
         run: python main.py
 
@@ -50,5 +51,6 @@ jobs:
           name: bhakti-palm-art-test
           path: |
             work/palm_art.png
+            work/wan2_video.mp4
             work/bhakti_reel.mp4
           retention-days: 3
