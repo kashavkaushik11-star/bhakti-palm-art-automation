@@ -114,7 +114,6 @@ def generate_reference_guided_image(prompt: str, output: Path):
                 height=1920,
                 width=1080,
                 rewrite_prompt=False,
-                num_images_per_prompt=1,
                 api_name="/infer",
             )
             image_result = result[0] if isinstance(result, (tuple, list)) else result
