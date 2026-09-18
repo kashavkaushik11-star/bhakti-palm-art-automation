@@ -182,6 +182,24 @@ def generate_reference_guided_image(prompt: str, output: Path):
     generation_prompt = f"""Create a completely NEW vertical 9:16 photograph of authentic handmade Palm-Art.
 
 STYLE: {compact_style}
+SUBJECT: {compact_subject}
+
+REAL BALLPOINT-PEN MEDIUM: Photograph a real adult human hand, palm-up on clean white paper.
+The palm and ALL FIVE natural fingers must be covered almost completely with extremely dense,
+handwritten blue/indigo ballpoint-pen artwork. It must look manually drawn directly on skin:
+thousands of thin imperfect pen strokes, fine hatching, cross-hatching, stippling, contour lines,
+tiny sketch marks, varied pressure and overlapping strokes following palm creases and finger contours.
+Create many tiny connected devotional scenes related to the subject. Keep temples, people, landscapes
+and deity/story elements small and integrated into the drawing. No large solid shapes or sparse symbols.
+Show realistic pores, creases and nails, plus 2-3 real blue/black ballpoint pens beside the hand.
+Premium photorealistic macro editorial photography, sharp ink detail, natural lighting.
+
+NEW ARTWORK ONLY: do not copy the reference subject, landmark, text, signature, exact objects or composition.
+NO tattoo, henna, mehndi, sticker, decal, printed glove, digital overlay, CGI, vector art, smooth logo,
+thick marker, blank fingers, extra/malformed fingers, colored ink, watermark or large readable text.
+The final image must convincingly look like a real photograph of painstakingly handwritten blue ballpoint Palm Art."""Create a completely NEW vertical 9:16 photograph of authentic handmade Palm-Art.
+
+STYLE: {compact_style}
 NEW DEVOTIONAL SUBJECT: {compact_subject}
 
 CRITICAL MEDIUM — this must look like a real artist manually drew with a BLUE BALLPOINT PEN directly on a real human palm.
