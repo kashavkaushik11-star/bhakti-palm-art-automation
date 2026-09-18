@@ -170,7 +170,7 @@ def generate_wan_video(image: Path, prompt: str, output: Path):
                 quality=10,
                 scheduler="UniPCMultistep",
                 flow_shift=3.0,
-                frame_multi=1,
+                frame_multi=2,
                 play_result_video=True,
                 safe_mode=True,
                 api_name="/generate_video",
