@@ -11,7 +11,6 @@ import requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from gradio_client import Client, handle_file
 from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parent
@@ -104,65 +103,56 @@ def _first_local_file(value):
                 return found
     return None
 
+def _pollinations_headers(token: str):
+    return {"Authorization": f"Bearer {token}"}
+
 def generate_reference_guided_image(prompt: str, output: Path):
-    token = os.environ.get("HF_TOKEN", "").strip()
+    token = os.environ.get("POLLINATIONS_API_KEY", "").strip()
     if not token:
-        raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
-
-    # The official Qwen Space has repeatedly returned an opaque upstream
-    # Gradio exception. Use the currently running Fast LoRA Space instead.
-    # It exposes a stable base64 API and performs Qwen Image Edit 2509 with
-    # the Rapid-AIO transformer.
-    reference_input = WORK / "qwen_reference_9x16.png"
-    with Image.open(REFERENCE) as ref:
-        ref = ref.convert("RGB")
-        # The fallback Space keeps the uploaded aspect ratio. Make the style
-        # reference explicitly vertical so the generated image is vertical too.
-        ref = ImageOps.fit(ref, (576, 1024), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
-        ref.save(reference_input, format="PNG")
-
-    import base64
-    with reference_input.open("rb") as fh:
-        image_b64 = "data:image/png;base64," + base64.b64encode(fh.read()).decode("ascii")
+        raise RuntimeError("Missing GitHub Secret: POLLINATIONS_API_KEY")
 
     last_error = None
     for attempt in range(3):
         try:
-            client = Client("prithivMLmods/Qwen-Image-Edit-2509-LoRAs-Fast", token=token)
-            result = client.predict(
-                image_b64,
-                prompt,
-                "Edit-Skin",
-                0,
-                True,
-                4.0,
-                8,
-                api_name="/edit_image",
-            )
-
-            if not isinstance(result, dict):
-                raise RuntimeError(f"Qwen Fast Space returned unexpected result type: {type(result).__name__}: {result}")
-
-            image_data = result.get("image", "")
-            if not isinstance(image_data, str) or not image_data:
-                raise RuntimeError(f"Qwen Fast Space returned no image: {result}")
-
-            if "," in image_data:
-                image_data = image_data.split(",", 1)[1]
-            image_bytes = base64.b64decode(image_data)
-            output.write_bytes(image_bytes)
-
+            with REFERENCE.open("rb") as fh:
+                files = {"image": ("palm_reference.png", fh, "image/png")}
+                data = {
+                    "prompt": prompt,
+                    "model": "google/gemini-3.1-flash-image",
+                    "size": "576x1024",
+                    "response_format": "b64_json",
+                }
+                r = requests.post(
+                    "https://gen.pollinations.ai/v1/images/edits",
+                    headers=_pollinations_headers(token),
+                    data=data,
+                    files=files,
+                    timeout=300,
+                )
+            if not r.ok:
+                raise RuntimeError(f"Pollinations image edit failed ({r.status_code}): {r.text[:1200]}")
+            payload = r.json()
+            item = (payload.get("data") or [{}])[0]
+            b64 = item.get("b64_json")
+            if b64:
+                import base64
+                output.write_bytes(base64.b64decode(b64))
+            else:
+                url = item.get("url")
+                if not url:
+                    raise RuntimeError(f"Pollinations returned no image: {payload}")
+                img = requests.get(url, headers=_pollinations_headers(token), timeout=180)
+                img.raise_for_status()
+                output.write_bytes(img.content)
             if output.stat().st_size < 10000:
-                raise RuntimeError("Qwen Fast Space returned an unexpectedly small image file.")
-
-            print("Image generated with Qwen-Image-Edit-2509-LoRAs-Fast using the Palm-Art reference image.")
+                raise RuntimeError("Pollinations returned an unexpectedly small image file.")
+            print("Image generated with Pollinations Gemini 3.1 Flash Image using the Palm-Art reference image.")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Qwen Fast LoRA Image Edit attempt {attempt + 1}/3 failed: {last_error}")
-            time.sleep(min(12 * (attempt + 1), 36))
-
-    raise RuntimeError(f"Qwen-Image-Edit-2509 Fast generation failed: {last_error}")
+            print(f"Pollinations image attempt {attempt + 1}/3 failed: {last_error}")
+            time.sleep(min(10 * (attempt + 1), 30))
+    raise RuntimeError(f"Pollinations image generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -182,52 +172,60 @@ def choose_music(category: str) -> Path:
     return make_fallback_devotional_music(category)
 
 def generate_wan_video(image: Path, prompt: str, output: Path):
-    token = os.environ.get("HF_TOKEN", "").strip()
+    token = os.environ.get("POLLINATIONS_API_KEY", "").strip()
     if not token:
-        raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
+        raise RuntimeError("Missing GitHub Secret: POLLINATIONS_API_KEY")
 
-    # Use a currently running Wan 2.2 14B I2V Fast Preview Space.
-    # The previous kulkas2pintu/wan555 Space now returns 404.
     last_error = None
-    negative = "flicker, morphing, deformation, distorted hand, extra fingers, missing fingers, melting ink, changing text, changing composition, blurry, low quality, watermark, camera shake, sudden zoom, new objects, duplicated objects"
-
     for attempt in range(3):
         try:
-            client = Client("r3gm/wan2-2-fp8da-aoti-preview", token=token)
-            result = client.predict(
-                input_image=handle_file(str(image)),
-                last_image=None,
-                prompt=prompt,
-                steps=6,
-                negative_prompt=negative,
-                duration_seconds=4.5,
-                guidance_scale=1.0,
-                guidance_scale_2=1.0,
-                seed=0,
-                randomize_seed=True,
-                quality=8,
-                scheduler="UniPCMultistep",
-                flow_shift=3.0,
-                api_name="/generate_video",
+            # Upload the generated Palm Art to Pollinations media storage so the
+            # video model can use it as the starting frame.
+            with image.open("rb") as fh:
+                upload = requests.post(
+                    "https://media.pollinations.ai/upload",
+                    headers=_pollinations_headers(token),
+                    files={"file": ("palm_art.png", fh, "image/png")},
+                    timeout=120,
+                )
+            if not upload.ok:
+                raise RuntimeError(f"Pollinations media upload failed ({upload.status_code}): {upload.text[:1200]}")
+            image_url = upload.headers.get("Location")
+            if not image_url:
+                try:
+                    image_url = upload.json().get("url")
+                except Exception:
+                    image_url = None
+            if not image_url:
+                raise RuntimeError(f"Pollinations media upload returned no URL: {upload.text[:1200]}")
+
+            params = {
+                "model": "bytedance/seedance-2.0-fast",
+                "duration": 5,
+                "aspectRatio": "9:16",
+                "image": image_url,
+            }
+            r = requests.get(
+                "https://gen.pollinations.ai/video/" + requests.utils.quote(prompt, safe=""),
+                headers=_pollinations_headers(token),
+                params=params,
+                timeout=600,
             )
-
-            video_result = result[0] if isinstance(result, (tuple, list)) else result
-            source = _first_local_file(video_result)
-            if not source:
-                raise RuntimeError(f"Wan2.2 returned an unexpected result: {result}")
-
-            shutil.copyfile(source, output)
-            if output.stat().st_size < 10000:
-                raise RuntimeError("Wan2.2 returned an unexpectedly small video file.")
-
-            print("Video generated with Wan2.2 14B I2V Fast Preview.")
+            if not r.ok:
+                raise RuntimeError(f"Pollinations video generation failed ({r.status_code}): {r.text[:1600]}")
+            output.write_bytes(r.content)
+            if output.stat().st_size < 10000 or not r.content[:4] == b"\x00\x00\x00\x18":
+                # MP4 may have a different compatible ftyp offset; only reject
+                # clearly tiny responses.
+                if output.stat().st_size < 10000:
+                    raise RuntimeError("Pollinations returned an unexpectedly small video file.")
+            print("Video generated with Pollinations Seedance 2.0 Fast using the Palm-Art image as the starting frame.")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Wan2.2 attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"Pollinations video attempt {attempt + 1}/3 failed: {last_error}")
             time.sleep(min(15 * (attempt + 1), 45))
-
-    raise RuntimeError(f"Wan2.2 I2V generation failed: {last_error}")
+    raise RuntimeError(f"Pollinations video generation failed: {last_error}")
 
 def make_video(generated_video: Path, music: Path, output: Path):
     vf = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p"
@@ -271,7 +269,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["HF_TOKEN"]
+    required = ["POLLINATIONS_API_KEY"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -328,7 +326,7 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Qwen/Qwen-Image-Edit-2509", "video_model": "Wan2.2 14B I2V Fast Preview", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "google/gemini-3.1-flash-image via Pollinations", "video_model": "bytedance/seedance-2.0-fast via Pollinations", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
