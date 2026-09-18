@@ -177,12 +177,13 @@ def generate_reference_guided_image(prompt: str, output: Path):
     # FLUX.1 Schnell accepts prompts up to 2048 characters.
     # Keep the reference-style summary compact so the request never exceeds
     # Cloudflare's live model limit.
-    compact_style = " ".join(style_text.split())[:650]
+    compact_style = " ".join(style_text.split())[:400]
+    compact_subject = " ".join(prompt.split())[:500]
     generation_prompt = f"""Create a completely NEW vertical 9:16 devotional Palm-Art photograph.
 
 STYLE: {compact_style}
 
-NEW DEVOTIONAL SUBJECT: {prompt}
+NEW DEVOTIONAL SUBJECT: {compact_subject}
 
 Show a real human hand resting palm-up on clean white paper, exactly five natural fingers.
 Cover the palm and every finger with extremely dense handmade blue/indigo ballpoint-pen artwork.
@@ -372,26 +373,10 @@ def main():
         generated_caption = fallback_caption
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
 
-    image_prompt = f"""
-Use the supplied Palm-Art reference image ONLY as a visual style, medium and composition reference.
-Do NOT preserve the specific Kedarnath subject, landmarks, written text, or exact artwork from the reference.
-
-Create a completely NEW vertical 9:16 macro photograph of a real human hand resting palm-up on clean white paper.
-Keep the same Palm-Art concept: a real hand covered with extremely dense handmade blue/indigo ballpoint-pen artwork,
-fine hatching, cross-hatching, stippling, miniature pilgrimage-map storytelling, realistic skin pores and palm creases,
-natural nails, exactly five separated fingers, and 2-3 real blue/black ballpoint pens beside the hand.
-
-NEW DEVOTIONAL SUBJECT FOR THIS CREATION: {topic}.
-Build the entire tiny connected pilgrimage world around this theme: {scene}.
-Make the chosen landmark and story recognizable but small and integrated into the hand drawing.
-Every finger should contain substantial fresh artwork. Fill most visible skin with intricate blue pen linework.
-
-The composition, objects, landmarks, people, scenery and linework must be newly invented for this creation.
-The reference is for STYLE ONLY, not for copying content.
-No tattoo, sticker, printed glove, CGI, vector art, sparse symbols, giant landmark, giant face,
-extra fingers, malformed fingers, blank fingers, colored ink, watermark or large text.
-Photorealistic macro photography, premium editorial detail, sharp ink strokes, realistic skin texture, dramatic but natural lighting.
-"""
+    # Only the new topic/scene is sent to the image generator. The reference image
+    # is analyzed separately for STYLE ONLY, keeping the Flux prompt safely below
+    # Cloudflare's 2048-character live limit.
+    image_prompt = f"{topic}. {scene}"
     motion_prompt = f"""
 Animate this Palm-Art illustration as a premium devotional cinematic short about {topic}.
 Preserve the exact hand, finger geometry, blue-ink artwork and composition of the generated image.
@@ -417,7 +402,7 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Pixazo Stable Diffusion 3.5 Image-to-Image (free preview)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
