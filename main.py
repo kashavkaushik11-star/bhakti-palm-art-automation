@@ -174,32 +174,29 @@ def generate_reference_guided_image(prompt: str, output: Path):
             "creases and natural nails; a few real ballpoint pens beside the hand; sharp ink detail; natural editorial lighting."
         )
 
-    generation_prompt = f"""
-Create a COMPLETELY NEW vertical devotional Palm-Art photograph.
+    # FLUX.1 Schnell accepts prompts up to 2048 characters.
+    # Keep the reference-style summary compact so the request never exceeds
+    # Cloudflare's live model limit.
+    compact_style = " ".join(style_text.split())[:650]
+    generation_prompt = f"""Create a completely NEW vertical 9:16 devotional Palm-Art photograph.
 
-REFERENCE STYLE BLUEPRINT:
-{style_text[:5000]}
+STYLE: {compact_style}
 
-IMPORTANT: The reference image is NOT being copied. Do not reproduce its subject, landmark,
-written text, signature, exact objects, or exact composition. Invent a fresh scene.
+NEW DEVOTIONAL SUBJECT: {prompt}
 
-NEW DEVOTIONAL SUBJECT:
-{prompt}
+Show a real human hand resting palm-up on clean white paper, exactly five natural fingers.
+Cover the palm and every finger with extremely dense handmade blue/indigo ballpoint-pen artwork.
+Use fine hatching, cross-hatching, stippling and tiny connected storytelling scenes related to
+the devotional subject. Keep landmarks and figures small and integrated into the hand drawing.
+Make the hand photorealistic with visible skin pores, palm creases and natural nails. Include
+2-3 real blue/black ballpoint pens beside the hand. Premium macro editorial photography,
+sharp ink detail and natural lighting.
 
-The final image must show a real human hand resting palm-up on clean white paper, exactly five
-natural fingers, with extremely dense handmade blue/indigo ballpoint-pen artwork covering the palm
-and every finger. The artwork should tell the new devotional story through tiny connected scenes,
-pilgrims, architecture, nature and symbolic details integrated into the pen drawing. Keep the
-devotional subject small enough to remain believable as hand artwork, not a giant poster.
+The artwork must be completely new. Do not copy the reference subject, landmark, text,
+signature, exact objects or exact composition. No tattoo, sticker, printed glove, CGI, vector
+art, sparse symbols, giant landmark, giant face, extra/malformed fingers, blank fingers,
+colored ink, watermark or large text."""
 
-Photorealistic macro photography, realistic skin pores and palm creases, natural nails, crisp ink
-strokes, fine hatching, cross-hatching and stippling, premium editorial detail, natural lighting.
-Include 2-3 real blue/black ballpoint pens beside the hand.
-
-Do not create a tattoo, sticker, printed glove, CGI render, vector illustration, sparse symbols,
-giant landmark, giant face, extra fingers, malformed fingers, blank fingers, colored ink,
-watermark or large text.
-"""
 
     flux_url = (
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
