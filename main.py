@@ -12,7 +12,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from gradio_client import Client, handle_file
-from PIL import Image
+from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
@@ -101,39 +101,61 @@ def generate_reference_guided_image(prompt: str, output: Path):
     token = os.environ.get("HF_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
-    last_error = None
-    reference_input = WORK / "qwen_reference.png"
+
+    # The official Qwen Space has repeatedly returned an opaque upstream
+    # Gradio exception. Use the currently running Fast LoRA Space instead.
+    # It exposes a stable base64 API and performs Qwen Image Edit 2509 with
+    # the Rapid-AIO transformer.
+    reference_input = WORK / "qwen_reference_9x16.png"
     with Image.open(REFERENCE) as ref:
         ref = ref.convert("RGB")
-        ref.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+        # The fallback Space keeps the uploaded aspect ratio. Make the style
+        # reference explicitly vertical so the generated image is vertical too.
+        ref = ImageOps.fit(ref, (576, 1024), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
         ref.save(reference_input, format="PNG")
+
+    import base64
+    with reference_input.open("rb") as fh:
+        image_b64 = "data:image/png;base64," + base64.b64encode(fh.read()).decode("ascii")
+
+    last_error = None
     for attempt in range(3):
         try:
-            client = Client("Qwen/Qwen-Image-Edit-2509", token=token)
+            client = Client("prithivMLmods/Qwen-Image-Edit-2509-LoRAs-Fast", token=token)
             result = client.predict(
-                images=[(handle_file(str(reference_input)), None)],
-                prompt=prompt,
-                seed=0,
-                randomize_seed=True,
-                true_guidance_scale=4.0,
-                num_inference_steps=24,
-                height=None,
-                width=None,
-                rewrite_prompt=False,
-                api_name="/infer",
+                image_b64,
+                prompt,
+                "Edit-Skin",
+                0,
+                True,
+                4.0,
+                8,
+                api_name="/edit_image",
             )
-            image_result = result[0] if isinstance(result, (tuple, list)) else result
-            source = _first_local_file(image_result)
-            if not source:
-                raise RuntimeError(f"Qwen Image Edit returned an unexpected result: {image_result}")
-            shutil.copyfile(source, output)
-            print("Image generated with Qwen-Image-Edit-2509 using the Palm-Art reference image.")
+
+            if not isinstance(result, dict):
+                raise RuntimeError(f"Qwen Fast Space returned unexpected result type: {type(result).__name__}: {result}")
+
+            image_data = result.get("image", "")
+            if not isinstance(image_data, str) or not image_data:
+                raise RuntimeError(f"Qwen Fast Space returned no image: {result}")
+
+            if "," in image_data:
+                image_data = image_data.split(",", 1)[1]
+            image_bytes = base64.b64decode(image_data)
+            output.write_bytes(image_bytes)
+
+            if output.stat().st_size < 10000:
+                raise RuntimeError("Qwen Fast Space returned an unexpectedly small image file.")
+
+            print("Image generated with Qwen-Image-Edit-2509-LoRAs-Fast using the Palm-Art reference image.")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Qwen Image Edit attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"Qwen Fast LoRA Image Edit attempt {attempt + 1}/3 failed: {last_error}")
             time.sleep(min(12 * (attempt + 1), 36))
-    raise RuntimeError(f"Qwen-Image-Edit-2509 generation failed: {last_error}")
+
+    raise RuntimeError(f"Qwen-Image-Edit-2509 Fast generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
