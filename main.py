@@ -203,10 +203,11 @@ colored ink, watermark or large text."""
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
         "/ai/run/@cf/black-forest-labs/flux-1-schnell"
     )
+    # The live Flux.1 Schnell endpoint rejects the optional /seed field.
+    # Keep the payload limited to fields accepted by the current API.
     flux_payload = {
         "prompt": generation_prompt,
         "steps": 8,
-        "seed": random.randint(1, 2_000_000_000),
     }
 
     last_error = None
