@@ -152,18 +152,24 @@ def generate_reference_guided_image(prompt: str, output: Path):
                     f"Cloudflare image generation failed ({r.status_code}): {r.text[:2500]}"
                 )
 
-            data = r.json()
-            result = data.get("result")
-            if not isinstance(result, str) or not result.strip():
-                raise RuntimeError(
-                    f"Cloudflare returned no image result: {str(data)[:2500]}"
-                )
+            content_type = r.headers.get("content-type", "").lower()
+            if content_type.startswith("image/"):
+                image_bytes = r.content
+            else:
+                data = r.json()
+                result = data.get("result")
+                if isinstance(result, dict):
+                    result = result.get("image") or result.get("image_b64") or result.get("data")
+                if not isinstance(result, str) or not result.strip():
+                    raise RuntimeError(
+                        f"Cloudflare returned no image result: {str(data)[:2500]}"
+                    )
 
-            raw = result.strip()
-            if raw.startswith("data:image"):
-                raw = raw.split(",", 1)[1]
+                raw = result.strip()
+                if raw.startswith("data:image"):
+                    raw = raw.split(",", 1)[1]
+                image_bytes = base64.b64decode(raw)
 
-            image_bytes = base64.b64decode(raw)
             output.write_bytes(image_bytes)
             if output.stat().st_size < 10000:
                 raise RuntimeError("Cloudflare returned an unexpectedly small image file.")
