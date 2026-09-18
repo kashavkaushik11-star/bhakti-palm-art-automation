@@ -116,9 +116,9 @@ def generate_reference_guided_image(prompt: str, output: Path):
                 seed=0,
                 randomize_seed=True,
                 true_guidance_scale=4.0,
-                num_inference_steps=28,
-                height=1360,
-                width=768,
+                num_inference_steps=24,
+                height=None,
+                width=None,
                 rewrite_prompt=False,
                 api_name="/infer",
             )
