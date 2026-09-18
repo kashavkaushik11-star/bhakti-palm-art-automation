@@ -184,46 +184,21 @@ def generate_reference_guided_image(prompt: str, output: Path):
 STYLE: {compact_style}
 SUBJECT: {compact_subject}
 
-REAL BALLPOINT-PEN MEDIUM: Photograph a real adult human hand, palm-up on clean white paper.
-The palm and ALL FIVE natural fingers must be covered almost completely with extremely dense,
-handwritten blue/indigo ballpoint-pen artwork. It must look manually drawn directly on skin:
-thousands of thin imperfect pen strokes, fine hatching, cross-hatching, stippling, contour lines,
-tiny sketch marks, varied pressure and overlapping strokes following palm creases and finger contours.
-Create many tiny connected devotional scenes related to the subject. Keep temples, people, landscapes
-and deity/story elements small and integrated into the drawing. No large solid shapes or sparse symbols.
-Show realistic pores, creases and nails, plus 2-3 real blue/black ballpoint pens beside the hand.
-Premium photorealistic macro editorial photography, sharp ink detail, natural lighting.
+Real adult human hand, palm-up on clean white paper, exactly five natural fingers.
+Make the palm and every finger look covered almost completely by extremely dense handmade
+BLUE/INDIGO BALLPOINT-PEN drawing. Authentic hand-drawn medium: thousands of very thin,
+imperfect pen strokes, fine hatching, cross-hatching, stippling, contour lines and tiny
+sketch marks following natural palm creases and finger contours. Fill the skin with continuous
+intricate blue pen linework, not isolated symbols. Integrate many tiny devotional scenes,
+temples, landscapes, pilgrims and story elements related to the subject, all small and connected.
+Real skin pores, creases and nails. 2-3 real blue/black ballpoint pens beside the hand.
+Photorealistic premium macro editorial photograph, sharp ink detail, natural lighting.
 
-NEW ARTWORK ONLY: do not copy the reference subject, landmark, text, signature, exact objects or composition.
-NO tattoo, henna, mehndi, sticker, decal, printed glove, digital overlay, CGI, vector art, smooth logo,
-thick marker, blank fingers, extra/malformed fingers, colored ink, watermark or large readable text.
-The final image must convincingly look like a real photograph of painstakingly handwritten blue ballpoint Palm Art."""Create a completely NEW vertical 9:16 photograph of authentic handmade Palm-Art.
-
-STYLE: {compact_style}
-NEW DEVOTIONAL SUBJECT: {compact_subject}
-
-CRITICAL MEDIUM — this must look like a real artist manually drew with a BLUE BALLPOINT PEN directly on a real human palm.
-The reference style is dense handwritten pen illustration, not tattoo art. Use thousands of very thin, imperfect, hand-drawn
-blue/indigo pen strokes: fine hatching, cross-hatching, stippling, contour lines, tiny sketch marks, varied pressure,
-overlapping strokes and miniature connected scenes. The ink must visibly follow the natural creases and contours of the skin.
-Fill almost the entire visible palm and substantial areas of ALL FIVE fingers with continuous detailed pen drawing.
-Avoid large solid blue shapes and avoid isolated tattoo-like symbols. Every area should contain fine pen texture and
-small narrative details, like an intricate hand-drawn travel sketchbook compressed onto the palm.
-
-Show one real adult human hand, palm facing the camera, naturally relaxed and resting on clean white paper.
-Exactly five anatomically normal fingers, with realistic skin pores, creases and natural nails.
-Place 2-3 real blue/black ballpoint pens beside the hand. Premium macro editorial photograph, sharp focus on the ink,
-natural skin texture, realistic lighting, subtle depth of field.
-
-The devotional scene must be completely NEW and related to the new subject, with tiny temples, landscapes, pilgrims,
-deity/story elements and environmental details integrated into the pen drawing rather than appearing as separate stickers.
-Do NOT copy the reference's specific subject, landmark, text, signature, objects, or exact composition.
-
-ABSOLUTELY NO tattoo, henna, mehndi, permanent body art, sticker, decal, printed glove, digital overlay, airbrush,
-vector illustration, CGI, smooth logo, thick marker, solid icon bands, sparse symbols, giant landmark, giant face,
-blank fingers, extra fingers, malformed fingers, colored ink, watermark or large readable text.
-The final image must convincingly look like a real photograph of a real palm covered in painstakingly handwritten blue ballpoint-pen art."""
-
+Create NEW artwork. Do not copy the reference subject, landmark, text, signature, exact objects
+or exact composition. NO tattoo, henna, mehndi, sticker, decal, printed glove, digital overlay,
+CGI, vector art, thick marker, solid blue shapes, sparse symbols, blank fingers, extra fingers,
+malformed fingers, colored ink, watermark or large readable text. It must look like a real photograph
+of painstakingly handwritten blue ballpoint Palm Art."""
 
     flux_url = (
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
