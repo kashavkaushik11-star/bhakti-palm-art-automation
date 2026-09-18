@@ -113,7 +113,8 @@ def generate_reference_guided_image(prompt: str, output: Path):
 
     # Cloudflare Workers AI SDXL-Lightning img2img accepts the reference
     # image directly as base64 and returns the generated PNG as base64.
-    image_b64 = base64.b64encode(REFERENCE.read_bytes()).decode("ascii")
+    reference_bytes = REFERENCE.read_bytes()
+    image_b64 = base64.b64encode(reference_bytes).decode("ascii")
     payload = {
         "prompt": prompt,
         "negative_prompt": (
@@ -121,7 +122,10 @@ def generate_reference_guided_image(prompt: str, output: Path):
             "giant face, extra fingers, malformed fingers, missing fingers, blank fingers, "
             "colored ink, watermark, large text, low detail, blurry, deformed hand"
         ),
+        # Cloudflare's model schema accepts img2img input as either image_b64
+        # or an 8-bit integer image array. Send both for REST compatibility.
         "image_b64": image_b64,
+        "image": list(reference_bytes),
         "height": 1536,
         "width": 864,
         "num_steps": 20,
