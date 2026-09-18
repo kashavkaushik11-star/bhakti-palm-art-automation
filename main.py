@@ -85,11 +85,18 @@ def _first_local_file(value):
         p = Path(str(value))
         return p if p.exists() else None
     if isinstance(value, dict):
-        for key in ("path", "url"):
+        # Gradio video outputs may be returned as {"video": "/tmp/...mp4"}
+        # while image outputs may use {"path": "..."}.
+        for key in ("path", "video", "file", "url"):
             if key in value and value[key]:
                 p = Path(str(value[key]))
                 if p.exists():
                     return p
+        # Some APIs nest the actual file inside a result object.
+        for item in value.values():
+            found = _first_local_file(item)
+            if found:
+                return found
     if isinstance(value, (list, tuple)):
         for item in value:
             found = _first_local_file(item)
