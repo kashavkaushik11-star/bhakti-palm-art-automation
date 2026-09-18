@@ -12,6 +12,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from gradio_client import Client, handle_file
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / "work"
@@ -101,18 +102,23 @@ def generate_reference_guided_image(prompt: str, output: Path):
     if not token:
         raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
     last_error = None
+    reference_input = WORK / "qwen_reference.png"
+    with Image.open(REFERENCE) as ref:
+        ref = ref.convert("RGB")
+        ref.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+        ref.save(reference_input, format="PNG")
     for attempt in range(3):
         try:
             client = Client("Qwen/Qwen-Image-Edit-2509", token=token)
             result = client.predict(
-                images=[(handle_file(str(REFERENCE)), None)],
+                images=[(handle_file(str(reference_input)), None)],
                 prompt=prompt,
                 seed=0,
                 randomize_seed=True,
                 true_guidance_scale=4.0,
-                num_inference_steps=32,
-                height=1920,
-                width=1080,
+                num_inference_steps=28,
+                height=1360,
+                width=768,
                 rewrite_prompt=False,
                 api_name="/infer",
             )
