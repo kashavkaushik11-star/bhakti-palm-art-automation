@@ -104,55 +104,64 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("Missing GitHub Secret: GEMINI_API_KEY")
+    token = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not token:
+        raise RuntimeError("Missing GitHub Secret: OPENROUTER_API_KEY")
 
     import base64
     with REFERENCE.open("rb") as fh:
         reference_b64 = base64.b64encode(fh.read()).decode("ascii")
 
+    reference_data_url = f"data:image/jpeg;base64,{reference_b64}"
     payload = {
-        "model": "gemini-3.1-flash-image",
-        "input": [
-            {"type": "text", "text": prompt},
-            {"type": "image", "data": reference_b64, "mime_type": "image/jpeg"},
+        "model": "recraft/recraft-v4.1-utility-pro:free",
+        "prompt": prompt,
+        "input_references": [
+            {
+                "type": "image_url",
+                "image_url": {"url": reference_data_url},
+            }
         ],
-        "response_format": [
-            {"type": "image", "aspect_ratio": "9:16", "image_size": "1K"}
-        ],
+        "image_config": {
+            "aspect_ratio": "9:16",
+            "strength": 0.72,
+            "style": "photorealistic",
+        },
     }
 
     last_error = None
     for attempt in range(3):
         try:
             r = requests.post(
-                "https://generativelanguage.googleapis.com/v1beta/interactions",
-                headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                "https://openrouter.ai/api/v1/images",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/kashavkaushik11-star/bhakti-palm-art-automation",
+                    "X-Title": "Bhakti Palm Art Automation",
+                },
                 json=payload,
                 timeout=300,
             )
             if not r.ok:
-                raise RuntimeError(f"Gemini image generation failed ({r.status_code}): {r.text[:1600]}")
+                raise RuntimeError(f"OpenRouter image generation failed ({r.status_code}): {r.text[:1800]}")
             data = r.json()
-            image_data = data.get("output_image", {}).get("data")
-            if not image_data:
-                for item in data.get("outputs", []):
-                    if item.get("type") == "image":
-                        image_data = item.get("data")
-                        break
-            if not image_data:
-                raise RuntimeError(f"Gemini returned no image: {str(data)[:2000]}")
-            output.write_bytes(base64.b64decode(image_data))
+            images = data.get("data") or []
+            b64 = images[0].get("b64_json") if images else None
+            if not b64:
+                raise RuntimeError(f"OpenRouter returned no image data: {str(data)[:2000]}")
+            output.write_bytes(base64.b64decode(b64))
             if output.stat().st_size < 10000:
-                raise RuntimeError("Gemini returned an unexpectedly small image file.")
-            print("Image generated with Gemini 3.1 Flash Image using the Palm-Art reference.")
+                raise RuntimeError("OpenRouter returned an unexpectedly small image file.")
+            cost = data.get("usage", {}).get("cost")
+            print(f"Image generated with OpenRouter Recraft V4.1 Utility Pro Free. Reported cost: {cost}")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Gemini image attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"OpenRouter image attempt {attempt + 1}/3 failed: {last_error}")
             time.sleep(min(10 * (attempt + 1), 30))
-    raise RuntimeError(f"Gemini image generation failed: {last_error}")
+
+    raise RuntimeError(f"OpenRouter image generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -244,7 +253,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["GEMINI_API_KEY"]
+    required = ["OPENROUTER_API_KEY"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -301,7 +310,7 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "gemini-3.1-flash-image", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "recraft/recraft-v4.1-utility-pro:free via OpenRouter", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
