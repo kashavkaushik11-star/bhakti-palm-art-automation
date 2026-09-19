@@ -104,113 +104,90 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("Missing GitHub Secret: GEMINI_API_KEY")
+    token = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not token:
+        raise RuntimeError("Missing GitHub Secret: OPENROUTER_API_KEY")
+    if not REFERENCE.exists():
+        raise RuntimeError(f"Missing palm reference image: {REFERENCE}")
 
-    # Use Gemini native image editing so the real palm reference is actually supplied
-    # to the image model. The old Flux pipeline only asked LLaVA to describe the style,
-    # which lost the reference's hand composition and produced weak Palm-Art results.
     import base64
-
-    reference_bytes = REFERENCE.read_bytes()
-    reference_b64 = base64.b64encode(reference_bytes).decode("utf-8")
+    reference_b64 = base64.b64encode(REFERENCE.read_bytes()).decode("ascii")
+    reference_data_url = f"data:image/jpeg;base64,{reference_b64}"
 
     generation_prompt = f"""
-Create a NEW photorealistic vertical 9:16 devotional Palm-Art photograph using the
-provided palm-art reference as the PRIMARY visual reference for the hand, framing,
-camera angle, palm coverage and handmade blue ballpoint-pen medium.
+Create a NEW photorealistic vertical 9:16 devotional Palm-Art photograph.
 
-Do NOT copy the reference's exact religious subject, text, watermark, signature or exact
-artwork. Recreate the same KIND of authentic Palm-Art with a new devotional subject.
+Use the supplied reference image ONLY as a structural/style guide for:
+- the real human palm-up hand
+- complete hand framing from wrist through all five fingertips
+- dense handmade blue/indigo ballpoint-pen artwork directly on skin
+- white paper background and realistic macro photography
 
-REQUESTED SUBJECT:
+REQUESTED NEW ARTWORK:
 {prompt}
 
-MOST IMPORTANT:
-- Show one real adult human hand, palm facing camera, fully visible from wrist through all
-  five fingertips. Natural anatomy. No cropped fingers, no missing thumb, no extra fingers.
-- The hand itself must be the hero subject and occupy most of the vertical frame.
-- Cover almost the entire palm AND all fingers with extremely dense blue/indigo ballpoint
-  pen linework, as if an artist painstakingly drew directly on real skin.
-- Put the requested Hindu devotional figure clearly in the CENTER of the palm and make it
-  recognizable. Surround it with many tiny connected devotional details related to the subject.
-- Preserve realistic skin pores, palm creases, fingerprints and natural nails between the ink.
-- The ink must visibly follow the natural folds and contours of the skin.
-- Use fine pen hatching, cross-hatching, stippling, contour lines and thousands of tiny
-  imperfect hand-drawn strokes. It must look physically drawn with a real ballpoint pen.
-- Clean white/very light background and a few real blue/black ballpoint pens beside the wrist.
-- Premium macro editorial photography, realistic shadows, sharp ink detail, natural skin tones.
+CRITICAL RESULT:
+One real adult human hand, palm facing camera, completely visible, five natural separated fingers
+and one thumb. The entire hand is the hero subject. Cover nearly all visible skin with dense,
+continuous blue/indigo ballpoint linework: fine hatching, cross-hatching, stippling, contour
+lines and thousands of imperfect handmade pen strokes following real palm creases.
 
-STRICTLY DO NOT:
-tattoo, henna, mehndi, paint, watercolor, marker, decal, sticker, printed glove,
-digital overlay, CGI, vector art, solid blue shapes, sparse symbols, blank fingers,
-generic landscape as the main subject, mountain-only artwork, extra hands, malformed fingers,
-fused fingers, cropped hand, cropped fingertips, watermark, logo, large readable text,
-multicolored ink.
+Place the requested Hindu devotional figure clearly and recognizably in the CENTER of the palm.
+Build a dense miniature devotional world around it with many tiny connected scenes appropriate
+to the requested subject. The devotional artwork, not a generic landscape, must dominate the palm.
 
-The final image must look like a genuine photograph of a real hand painstakingly covered
-with intricate blue ballpoint Palm-Art, matching the physical realism and framing of the
-reference while creating completely new devotional artwork.
+Keep realistic skin pores, fingerprints, wrinkles and natural nails visible between the ink.
+Add 2-3 real blue/black ballpoint pens beside the wrist on clean white paper.
+Premium macro editorial photograph, sharp ink detail, natural skin texture and soft realistic shadows.
+
+DO NOT create tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector
+art, paint, watercolor, thick marker, solid blue patches, sparse symbols, blank fingers,
+mountain-only artwork, generic landscape-only artwork, extra fingers, fused fingers, malformed
+hands, cropped fingertips, duplicate hands, watermark, logo, large readable text or multicolored ink.
+
+Invent completely new devotional artwork. Do not copy the exact deity drawing, text or composition
+from the reference.
 """.strip()
 
-    url = "https://generativelanguage.googleapis.com/v1beta/interactions"
     payload = {
-        "model": "gemini-2.5-flash-image",
-        "input": [
-            {"type": "text", "text": generation_prompt},
-            {"type": "image", "mime_type": "image/jpeg", "data": reference_b64},
+        "model": "sourceful/riverflow-v2.5-fast:free",
+        "prompt": generation_prompt,
+        "input_references": [
+            {"type": "image_url", "image_url": {"url": reference_data_url}}
         ],
-        "response_format": {"type": "image", "mime_type": "image/jpeg", "aspect_ratio": "9:16"},
+        "image_config": {
+            "aspect_ratio": "9:16",
+            "background_mode": "original",
+        },
+        "reasoning": "medium",
     }
 
     last_error = None
     for attempt in range(3):
         try:
             r = requests.post(
-                url,
+                "https://openrouter.ai/api/v1/images",
                 headers={
-                    "x-goog-api-key": key,
+                    "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/kashavkaushik11-star/bhakti-palm-art-automation",
+                    "X-Title": "Bhakti Palm Art Automation - Riverflow Test",
                 },
                 json=payload,
-                timeout=300,
+                timeout=360,
             )
             if not r.ok:
-                raise RuntimeError(f"Gemini image generation failed ({r.status_code}): {r.text[:2500]}")
+                raise RuntimeError(f"OpenRouter Riverflow failed ({r.status_code}): {r.text[:3000]}")
 
             data = r.json()
-            image_b64 = None
+            images = data.get("data") or []
+            b64 = images[0].get("b64_json") if images else None
+            if not b64:
+                raise RuntimeError(f"Riverflow returned no image data: {str(data)[:3000]}")
 
-            # Current Interactions API returns an output_image block.
-            if isinstance(data.get("output_image"), dict):
-                image_b64 = data["output_image"].get("data")
-            if not image_b64:
-                for step in data.get("steps", []):
-                    if isinstance(step, dict):
-                        for item in step.get("content", []):
-                            if isinstance(item, dict) and item.get("type") == "image" and item.get("data"):
-                                image_b64 = item["data"]
-                                break
-                    if image_b64:
-                        break
-
-            if not image_b64:
-                for item in data.get("output", []):
-                    if isinstance(item, dict):
-                        if item.get("type") in ("image", "output_image") and isinstance(item.get("image"), dict):
-                            image_b64 = item["image"].get("data")
-                        if not image_b64:
-                            image_b64 = item.get("data")
-                    if image_b64:
-                        break
-
-            if not image_b64:
-                raise RuntimeError(f"Gemini returned no image data: {str(data)[:3000]}")
-
-            output.write_bytes(base64.b64decode(image_b64))
+            output.write_bytes(base64.b64decode(b64))
             if output.stat().st_size < 10000:
-                raise RuntimeError("Gemini returned an unexpectedly small image file.")
+                raise RuntimeError("Riverflow returned an unexpectedly small image file.")
 
             with Image.open(output) as im:
                 im = ImageOps.exif_transpose(im).convert("RGB")
@@ -222,15 +199,16 @@ reference while creating completely new devotional artwork.
                 canvas.paste(im, (left, top))
                 canvas.save(output, format="PNG")
 
-            print("Image generated with Gemini native image editing + Palm-Art reference.")
+            cost = (data.get("usage") or {}).get("cost")
+            print(f"Image generated with Sourceful Riverflow V2.5 Fast. Reported cost={cost}")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Gemini Palm-Art image attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"Riverflow attempt {attempt + 1}/3 failed: {last_error}")
             if attempt < 2:
                 time.sleep(min(10 * (attempt + 1), 30))
 
-    raise RuntimeError(f"Gemini Palm-Art image generation failed: {last_error}")
+    raise RuntimeError(f"Riverflow Palm-Art generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -322,7 +300,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["GEMINI_API_KEY"]
+    required = ["GEMINI_API_KEY", "OPENROUTER_API_KEY"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -339,9 +317,7 @@ def main():
         generated_caption = fallback_caption
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
 
-    # Only the new topic/scene is sent to the image generator. The reference image
-    # is analyzed separately for STYLE ONLY, keeping the Flux prompt safely below
-    # Cloudflare's 2048-character live limit.
+    # Build a compact subject prompt; Riverflow receives the reference image separately.
     deity_en = {
         "कृष्ण": "Lord Krishna playing flute",
         "राधा-कृष्ण": "Radha and Lord Krishna together",
@@ -382,12 +358,12 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Gemini 2.5 Flash Image with Palm-Art reference", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Sourceful Riverflow V2.5 Fast via OpenRouter (reference edit)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Sourceful Riverflow V2.5 Fast via OpenRouter (reference edit)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
