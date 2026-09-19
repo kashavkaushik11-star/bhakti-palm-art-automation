@@ -104,184 +104,123 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
-    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
-    if not account_id or not token:
-        raise RuntimeError("Missing GitHub Secrets: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN")
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("Missing GitHub Secret: GEMINI_API_KEY")
 
+    # Use Gemini native image editing so the real palm reference is actually supplied
+    # to the image model. The old Flux pipeline only asked LLaVA to describe the style,
+    # which lost the reference's hand composition and produced weak Palm-Art results.
     import base64
 
-    # Cloudflare's currently documented SDXL/Lightning endpoints expose the
-    # img2img fields in the schema, but the live backend can reject the image
-    # tensor with ERROR 3030. We therefore use a reliable two-stage pipeline:
-    # 1) LLaVA reads the reference and extracts STYLE ONLY.
-    # 2) Flux.1 Schnell generates a completely new image from that style blueprint.
-    # This keeps the reference influential without depending on the broken
-    # img2img backend path.
     reference_bytes = REFERENCE.read_bytes()
+    reference_b64 = base64.b64encode(reference_bytes).decode("utf-8")
 
-    vision_url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/llava-hf/llava-1.5-7b-hf"
-    )
-    vision_payload = {
-        "image": list(reference_bytes),
-        "prompt": (
-            "Analyze this reference image ONLY for its visual STYLE and medium. "
-            "Do not describe or preserve its specific religious subject, landmark, "
-            "written names, exact composition, or exact objects. Return a concise "
-            "style blueprint covering: real hand photography, palm/finger treatment, "
-            "blue ballpoint pen technique, density of linework, hatching, stippling, "
-            "paper/background, camera/macro look, lighting and realism. "
-            "This blueprint will be used to create a completely NEW devotional artwork."
-        ),
-        "max_tokens": 400,
-    }
+    generation_prompt = f"""
+Create a NEW photorealistic vertical 9:16 devotional Palm-Art photograph using the
+provided palm-art reference as the PRIMARY visual reference for the hand, framing,
+camera angle, palm coverage and handmade blue ballpoint-pen medium.
 
-    style_text = ""
-    for attempt in range(3):
-        try:
-            vr = requests.post(
-                vision_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                json=vision_payload,
-                timeout=180,
-            )
-            if vr.ok:
-                vd = vr.json()
-                result = vd.get("result", vd)
-                if isinstance(result, dict):
-                    style_text = result.get("description") or result.get("response") or result.get("text") or ""
-                elif isinstance(result, str):
-                    style_text = result
-                if style_text.strip():
-                    break
-            else:
-                print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {vr.text[:1200]}")
-        except Exception as exc:
-            print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {exc}")
-        if attempt < 2:
-            time.sleep(min(5 * (attempt + 1), 15))
+Do NOT copy the reference's exact religious subject, text, watermark, signature or exact
+artwork. Recreate the same KIND of authentic Palm-Art with a new devotional subject.
 
-    if not style_text.strip():
-        style_text = (
-            "Photorealistic macro photograph of a real palm-up human hand on clean white paper; "
-            "dense handmade blue and indigo ballpoint-pen artwork covering the palm and all five fingers; "
-            "fine cross-hatching, hatching and stippling; intricate miniature storytelling; realistic skin pores, "
-            "creases and natural nails; a few real ballpoint pens beside the hand; sharp ink detail; natural editorial lighting."
-        )
+REQUESTED SUBJECT:
+{prompt}
 
-    # FLUX.1 Schnell accepts prompts up to 2048 characters.
-    # Keep the reference-style summary compact so the request never exceeds
-    # Cloudflare's live model limit.
-    compact_style = " ".join(style_text.split())[:400]
-    compact_subject = " ".join(prompt.split())[:500]
-    generation_prompt = f"""Create a completely NEW photorealistic vertical devotional Palm-Art photograph.
+MOST IMPORTANT:
+- Show one real adult human hand, palm facing camera, fully visible from wrist through all
+  five fingertips. Natural anatomy. No cropped fingers, no missing thumb, no extra fingers.
+- The hand itself must be the hero subject and occupy most of the vertical frame.
+- Cover almost the entire palm AND all fingers with extremely dense blue/indigo ballpoint
+  pen linework, as if an artist painstakingly drew directly on real skin.
+- Put the requested Hindu devotional figure clearly in the CENTER of the palm and make it
+  recognizable. Surround it with many tiny connected devotional details related to the subject.
+- Preserve realistic skin pores, palm creases, fingerprints and natural nails between the ink.
+- The ink must visibly follow the natural folds and contours of the skin.
+- Use fine pen hatching, cross-hatching, stippling, contour lines and thousands of tiny
+  imperfect hand-drawn strokes. It must look physically drawn with a real ballpoint pen.
+- Clean white/very light background and a few real blue/black ballpoint pens beside the wrist.
+- Premium macro editorial photography, realistic shadows, sharp ink detail, natural skin tones.
 
-STYLE: {compact_style}
-SUBJECT: {compact_subject}
+STRICTLY DO NOT:
+tattoo, henna, mehndi, paint, watercolor, marker, decal, sticker, printed glove,
+digital overlay, CGI, vector art, solid blue shapes, sparse symbols, blank fingers,
+generic landscape as the main subject, mountain-only artwork, extra hands, malformed fingers,
+fused fingers, cropped hand, cropped fingertips, watermark, logo, large readable text,
+multicolored ink.
 
-CRITICAL COMPOSITION:
-A real adult human hand is held palm-up, centered and fully visible from wrist to fingertips.
-Show the COMPLETE hand: thumb plus four fingers, natural anatomy, five fingers total, no cropped
-fingertips, no missing thumb, no extra fingers. The entire palm is the canvas.
-The devotional artwork must be the MAIN SUBJECT of the palm, not just a landscape.
-Create a recognizable sacred figure or devotional scene in the CENTER of the palm, chosen from
-the requested subject: Krishna playing flute, Radha-Krishna, Shiva/Mahadev, Hanuman, Ram-Sita,
-Durga, Ganesh or another clearly recognizable Hindu devotional subject. Surround the main figure
-with a dense miniature devotional world: temple, lamps, flowers, river, mountains, trees,
-pilgrims and sacred symbols appropriate to the requested subject.
+The final image must look like a genuine photograph of a real hand painstakingly covered
+with intricate blue ballpoint Palm-Art, matching the physical realism and framing of the
+reference while creating completely new devotional artwork.
+""".strip()
 
-AUTHENTIC PEN-ART:
-The artwork is painstakingly hand-drawn directly on real human skin using BLUE/INDIGO BALLPOINT PEN.
-Cover almost the entire palm and fingers with continuous dense fine pen linework. Use thousands of
-thin imperfect handwritten strokes, contour lines, cross-hatching, hatching, stippling and tiny
-sketch marks that follow the natural palm creases and finger contours. The linework must remain
-clearly visible and handmade. Keep skin pores, wrinkles, fingerprints and natural nails visible
-between the ink strokes. The ink must look physically drawn onto the skin, not printed.
-
-PHOTOGRAPH:
-Premium realistic macro photograph, clean white background, soft natural studio lighting,
-sharp focus on the hand and ink, realistic skin texture, subtle shadows, editorial photography.
-Place 2-3 real blue/black ballpoint pens beside the wrist as physical drawing tools.
-
-STRICTLY AVOID:
-tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector art,
-thick marker, paint, watercolor, sparse symbols, isolated blue patches, blank fingers,
-generic mountain-only landscape, landscape-only composition, unreadable blobs, extra fingers,
-malformed fingers, fused fingers, cropped hand, cropped fingertips, duplicate hand, watermark,
-logo, large readable text, colored ink.
-
-The result must look like a REAL PHOTOGRAPH of an artist who painstakingly drew an intricate
-Hindu devotional scene directly across a real palm with a blue ballpoint pen. Keep the entire
-hand visible and make the devotional figure clearly recognizable."""
-
-
-    flux_url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/black-forest-labs/flux-1-schnell"
-    )
-    # The live Flux.1 Schnell endpoint rejects the optional /seed field.
-    # Keep the payload limited to fields accepted by the current API.
-    flux_payload = {
-        "prompt": generation_prompt,
-        "steps": 8,
+    url = "https://generativelanguage.googleapis.com/v1beta/interactions"
+    payload = {
+        "model": "gemini-2.5-flash-image",
+        "input": [
+            {"type": "text", "text": generation_prompt},
+            {"type": "image", "mime_type": "image/jpeg", "data": reference_b64},
+        ],
+        "response_format": [{"type": "image"}],
     }
 
     last_error = None
     for attempt in range(3):
         try:
             r = requests.post(
-                flux_url,
+                url,
                 headers={
-                    "Authorization": f"Bearer {token}",
+                    "x-goog-api-key": key,
                     "Content-Type": "application/json",
                 },
-                json=flux_payload,
+                json=payload,
                 timeout=300,
             )
             if not r.ok:
-                raise RuntimeError(
-                    f"Cloudflare Flux image generation failed ({r.status_code}): {r.text[:2500]}"
-                )
+                raise RuntimeError(f"Gemini image generation failed ({r.status_code}): {r.text[:2500]}")
 
             data = r.json()
-            result = data.get("result", data)
-            image_b64 = result.get("image") if isinstance(result, dict) else None
+            image_b64 = None
+
+            # Current Interactions API returns an output_image block.
+            if isinstance(data.get("output_image"), dict):
+                image_b64 = data["output_image"].get("data")
             if not image_b64:
-                raise RuntimeError(f"Cloudflare Flux returned no image: {str(data)[:2500]}")
+                for item in data.get("output", []):
+                    if isinstance(item, dict):
+                        if item.get("type") in ("image", "output_image") and isinstance(item.get("image"), dict):
+                            image_b64 = item["image"].get("data")
+                        if not image_b64:
+                            image_b64 = item.get("data")
+                    if image_b64:
+                        break
+
+            if not image_b64:
+                raise RuntimeError(f"Gemini returned no image data: {str(data)[:3000]}")
 
             output.write_bytes(base64.b64decode(image_b64))
             if output.stat().st_size < 10000:
-                raise RuntimeError("Cloudflare Flux returned an unexpectedly small image file.")
+                raise RuntimeError("Gemini returned an unexpectedly small image file.")
 
             with Image.open(output) as im:
-                im = ImageOps.exif_transpose(im)
-                # Preserve the COMPLETE hand. Fit the generated image inside a 9:16 white canvas
-                # instead of center-cropping, which can cut off the thumb/fingertips.
-                target_w, target_h = 864, 1536
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                target_w, target_h = 768, 1344
                 im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
                 canvas = Image.new("RGB", (target_w, target_h), "white")
                 left = (target_w - im.width) // 2
                 top = (target_h - im.height) // 2
-                if im.mode in ("RGBA", "LA"):
-                    canvas.paste(im.convert("RGBA"), (left, top), im.convert("RGBA"))
-                else:
-                    canvas.paste(im.convert("RGB"), (left, top))
+                canvas.paste(im, (left, top))
                 canvas.save(output, format="PNG")
 
-            print("Image generated with Cloudflare LLaVA style analysis + Flux.1 Schnell.")
+            print("Image generated with Gemini native image editing + Palm-Art reference.")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Cloudflare Flux image attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"Gemini Palm-Art image attempt {attempt + 1}/3 failed: {last_error}")
             if attempt < 2:
                 time.sleep(min(10 * (attempt + 1), 30))
 
-    raise RuntimeError(f"Cloudflare image generation failed: {last_error}")
+    raise RuntimeError(f"Gemini Palm-Art image generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
