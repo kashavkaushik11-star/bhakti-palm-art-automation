@@ -115,7 +115,7 @@ Create a NEW photorealistic vertical devotional Palm-Art photograph from the sup
 real-hand reference image.
 
 REQUESTED NEW ARTWORK:
-\${prompt}
+{prompt}
 
 Use the reference only as a structural/style guide. Preserve the real adult palm-up
 hand geometry, complete wrist-to-fingertips framing and natural skin texture, but
@@ -151,10 +151,10 @@ Invent completely new devotional artwork and do not copy the exact deity drawing
 composition from the reference.
 """.strip()
 
-    client = Client(
-        "mage-flow-community/mage-flow",
-        hf_token=os.getenv("HF_TOKEN") or None,
-    )
+    client_kwargs = {}
+    if os.getenv("HF_TOKEN"):
+        client_kwargs["token"] = os.getenv("HF_TOKEN")
+    client = Client("microsoft/mage-flow", **client_kwargs)
 
     result = client.predict(
         generation_prompt,
@@ -168,7 +168,7 @@ composition from the reference.
         1344,
         42,
         "turbo",
-        api_name="/generate",
+        api_name="generate",
     )
 
     image_value = result[0] if isinstance(result, (list, tuple)) else result
