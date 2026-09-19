@@ -47,6 +47,7 @@ jobs:
         with:
           name: bhakti-palm-art-test
           path: |
+            work/clean_hand_stage1.png
             work/palm_art.png
             work/wan2_video.mp4
             work/bhakti_reel.mp4
