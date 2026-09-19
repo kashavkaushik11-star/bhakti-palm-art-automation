@@ -1,0 +1,92 @@
+name: Kaggle Connection TEST
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  kaggle-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Kaggle CLI
+        run: pip install -q -U kaggle
+
+      - name: Pull existing Kaggle notebook
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$KAGGLE_KERNEL_ID"
+          mkdir -p kaggle_kernel
+          kaggle kernels pull "$KAGGLE_KERNEL_ID" -m -p kaggle_kernel
+          echo "Pulled Kaggle kernel successfully."
+          cat kaggle_kernel/kernel-metadata.json
+
+      - name: Push and run existing Kaggle notebook
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        run: |
+          set -euo pipefail
+          kaggle kernels push -p kaggle_kernel
+
+      - name: Poll Kaggle run
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            STATUS="$(kaggle kernels status "$KAGGLE_KERNEL_ID" 2>&1 || true)"
+            echo "$STATUS"
+
+            if echo "$STATUS" | grep -qiE "complete|completed|success"; then
+              echo "Kaggle run completed."
+              exit 0
+            fi
+
+            if echo "$STATUS" | grep -qiE "error|failed"; then
+              echo "Kaggle run failed."
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+          echo "Timed out waiting for Kaggle."
+          exit 1
+
+      - name: Download Kaggle output
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p kaggle_output
+          kaggle kernels output "$KAGGLE_KERNEL_ID" -p kaggle_output --force
+          echo "Kaggle output:"
+          find kaggle_output -type f -maxdepth 5 -print
+
+      - name: Upload Kaggle output
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaggle-connection-test-output
+          path: kaggle_output/
+          retention-days: 3
