@@ -154,7 +154,7 @@ Mahadev and a dense Hindu devotional miniature world directly onto one real huma
         640,
         896,
         "euler",
-        10,
+        20,
         handle_file(str(REFERENCE)),
         None,
         None,
