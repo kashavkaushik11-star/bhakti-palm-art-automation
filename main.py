@@ -104,108 +104,101 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    token = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if not token:
-        raise RuntimeError("Missing GitHub Secret: OPENROUTER_API_KEY")
     if not REFERENCE.exists():
         raise RuntimeError(f"Missing palm reference image: {REFERENCE}")
 
-    import base64
-    reference_b64 = base64.b64encode(REFERENCE.read_bytes()).decode("ascii")
-    reference_data_url = f"data:image/jpeg;base64,{reference_b64}"
+    # Verified new model test: Microsoft Mage-Flow-Edit-Turbo via public HF ZeroGPU.
+    from gradio_client import Client, handle_file
 
     generation_prompt = f"""
-Create a NEW photorealistic vertical 9:16 devotional Palm-Art photograph.
-
-Use the supplied reference image ONLY as a structural/style guide for:
-- the real human palm-up hand
-- complete hand framing from wrist through all five fingertips
-- dense handmade blue/indigo ballpoint-pen artwork directly on skin
-- white paper background and realistic macro photography
+Create a NEW photorealistic vertical devotional Palm-Art photograph from the supplied
+real-hand reference image.
 
 REQUESTED NEW ARTWORK:
-{prompt}
+\${prompt}
+
+Use the reference only as a structural/style guide. Preserve the real adult palm-up
+hand geometry, complete wrist-to-fingertips framing and natural skin texture, but
+redesign the artwork completely.
 
 CRITICAL RESULT:
-One real adult human hand, palm facing camera, completely visible, five natural separated fingers
-and one thumb. The entire hand is the hero subject. Cover nearly all visible skin with dense,
-continuous blue/indigo ballpoint linework: fine hatching, cross-hatching, stippling, contour
-lines and thousands of imperfect handmade pen strokes following real palm creases.
+One complete real human hand, palm facing camera, all five fingers and thumb fully
+visible and naturally separated. The hand is the hero subject. Cover nearly all
+visible skin with dense continuous blue/indigo ballpoint-pen artwork: fine hatching,
+cross-hatching, stippling, contour lines and thousands of imperfect handmade pen strokes
+following real palm creases.
 
-Place the requested Hindu devotional figure clearly and recognizably in the CENTER of the palm.
-Build a dense miniature devotional world around it with many tiny connected scenes appropriate
-to the requested subject. The devotional artwork, not a generic landscape, must dominate the palm.
+Put the requested Hindu devotional figure clearly and recognizably in the CENTER of
+the palm. Surround it with a dense miniature devotional world connected by fine
+hand-drawn pen lines: temples, lamps, flowers, river, trees, mountains, pilgrims and
+other subject-specific details. The devotional scene must dominate the palm rather
+than becoming a generic mountain landscape.
 
-Keep realistic skin pores, fingerprints, wrinkles and natural nails visible between the ink.
-Add 2-3 real blue/black ballpoint pens beside the wrist on clean white paper.
-Premium macro editorial photograph, sharp ink detail, natural skin texture and soft realistic shadows.
+Keep real skin pores, fingerprints, wrinkles and natural nails visible between ink
+strokes. Keep a clean light/white background and 2-3 real blue/black ballpoint pens
+beside the wrist.
 
-DO NOT create tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector
-art, paint, watercolor, thick marker, solid blue patches, sparse symbols, blank fingers,
-mountain-only artwork, generic landscape-only artwork, extra fingers, fused fingers, malformed
-hands, cropped fingertips, duplicate hands, watermark, logo, large readable text or multicolored ink.
+Photorealistic macro editorial photograph, sharp handmade ink detail, natural skin
+texture, realistic shadows.
 
-Invent completely new devotional artwork. Do not copy the exact deity drawing, text or composition
-from the reference.
+DO NOT create tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay,
+CGI, vector art, paint, watercolor, marker, solid blue patches, sparse symbols,
+blank fingers, mountain-only artwork, generic landscape-only artwork, extra fingers,
+fused fingers, malformed hands, cropped fingertips, duplicate hands, watermark,
+logo, large readable text, or multicolored ink.
+
+Invent completely new devotional artwork and do not copy the exact deity drawing or
+composition from the reference.
 """.strip()
 
-    payload = {
-        "model": "sourceful/riverflow-v2.5-fast",
-        "prompt": generation_prompt,
-        "input_references": [
-            {"type": "image_url", "image_url": {"url": reference_data_url}}
-        ],
-        "aspect_ratio": "9:16",
-        "reasoning": "medium",
-    }
+    client = Client(
+        "mage-flow-community/mage-flow",
+        hf_token=os.getenv("HF_TOKEN") or None,
+    )
 
-    last_error = None
-    for attempt in range(3):
+    result = client.predict(
+        generation_prompt,
+        handle_file(str(REFERENCE)),
+        "worst quality, low quality, blurry, bad anatomy, bad hands, extra fingers, "
+        "fused fingers, cropped hand, tattoo, henna, mehndi, watermark, logo, text",
+        4,
+        1.0,
+        1024,
+        1024,
+        1344,
+        42,
+        "turbo",
+        api_name="/generate",
+    )
+
+    image_value = result[0] if isinstance(result, (list, tuple)) else result
+    if isinstance(image_value, dict):
+        image_value = image_value.get("path") or image_value.get("url") or image_value.get("image")
+
+    if isinstance(image_value, str):
+        src = Path(image_value)
+        if not src.exists():
+            raise RuntimeError(f"Mage-Flow returned an inaccessible image path: {image_value}")
+        with Image.open(src) as im:
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            im.thumbnail((768, 1344), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", (768, 1344), "white")
+            canvas.paste(im, ((768 - im.width)//2, (1344 - im.height)//2))
+            canvas.save(output, format="PNG")
+    else:
         try:
-            r = requests.post(
-                "https://openrouter.ai/api/v1/images",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://github.com/kashavkaushik11-star/bhakti-palm-art-automation",
-                    "X-Title": "Bhakti Palm Art Automation - Riverflow Test",
-                },
-                json=payload,
-                timeout=360,
-            )
-            if not r.ok:
-                raise RuntimeError(f"OpenRouter Riverflow failed ({r.status_code}): {r.text[:3000]}")
-
-            data = r.json()
-            images = data.get("data") or []
-            b64 = images[0].get("b64_json") if images else None
-            if not b64:
-                raise RuntimeError(f"Riverflow returned no image data: {str(data)[:3000]}")
-
-            output.write_bytes(base64.b64decode(b64))
-            if output.stat().st_size < 10000:
-                raise RuntimeError("Riverflow returned an unexpectedly small image file.")
-
-            with Image.open(output) as im:
-                im = ImageOps.exif_transpose(im).convert("RGB")
-                target_w, target_h = 768, 1344
-                im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
-                canvas = Image.new("RGB", (target_w, target_h), "white")
-                left = (target_w - im.width) // 2
-                top = (target_h - im.height) // 2
-                canvas.paste(im, (left, top))
-                canvas.save(output, format="PNG")
-
-            cost = (data.get("usage") or {}).get("cost")
-            print(f"Image generated with Sourceful Riverflow V2.5 Fast. Reported cost={cost}")
-            return
+            im = ImageOps.exif_transpose(image_value).convert("RGB")
         except Exception as exc:
-            last_error = str(exc)
-            print(f"Riverflow attempt {attempt + 1}/3 failed: {last_error}")
-            if attempt < 2:
-                time.sleep(min(10 * (attempt + 1), 30))
+            raise RuntimeError(f"Mage-Flow returned an unsupported image result: {type(image_value)}") from exc
+        im.thumbnail((768, 1344), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGB", (768, 1344), "white")
+        canvas.paste(im, ((768 - im.width)//2, (1344 - im.height)//2))
+        canvas.save(output, format="PNG")
 
-    raise RuntimeError(f"Riverflow Palm-Art generation failed: {last_error}")
+    if output.stat().st_size < 10000:
+        raise RuntimeError("Mage-Flow returned an unexpectedly small image file.")
+
+    print("Image generated with Microsoft Mage-Flow-Edit-Turbo via Hugging Face ZeroGPU.")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -297,7 +290,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["GEMINI_API_KEY", "OPENROUTER_API_KEY"]
+    required = ["GEMINI_API_KEY", "HF_TOKEN"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
