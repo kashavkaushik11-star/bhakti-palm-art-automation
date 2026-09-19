@@ -64,9 +64,9 @@ jobs:
             "code_file": "gpu_test.py",
             "language": "python",
             "kernel_type": "script",
-            "is_private": "true",
-            "enable_gpu": "true",
-            "enable_internet": "false",
+            "is_private": true,
+            "enable_gpu": true,
+            "enable_internet": false,
             "machine_shape": "NvidiaTeslaT4"
           }
           JSON
