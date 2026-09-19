@@ -86,14 +86,14 @@ jobs:
             "language": "python",
             "kernel_type": "script",
             "is_private": true,
-            "enable_gpu": true,
-            "enable_internet": false,
-            "machine_shape": "NvidiaTeslaT4"
+            "enable_gpu": "true",
+            "enable_internet": "false",
+            "machine_shape": ""
           }
           JSON
 
           echo "Pushing dedicated GPU test kernel..."
-          kaggle kernels push --accelerator NvidiaTeslaT4 --timeout 300 -p kaggle_gpu_test
+          kaggle kernels push --timeout 300 -p kaggle_gpu_test
 
           for i in $(seq 1 30); do
             STATUS="$(kaggle kernels status daya11/bhakti-palm-art-gpu-test 2>&1 || true)"
