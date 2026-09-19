@@ -1,0 +1,104 @@
+name: Kaggle GPU TEST
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/kaggle-gpu-test.yml"
+  workflow_dispatch:
+
+jobs:
+  gpu-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Kaggle CLI
+        run: pip install -q -U kaggle
+
+      - name: Run minimal Kaggle GPU test
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          rm -rf kaggle_gpu_test kaggle_gpu_output
+          mkdir -p kaggle_gpu_test kaggle_gpu_output
+
+          cat > kaggle_gpu_test/gpu_test.py <<'PY'
+          import torch
+          from pathlib import Path
+
+          print("=== KAGGLE GPU TEST ===")
+          print("Torch:", torch.__version__)
+          print("CUDA available:", torch.cuda.is_available())
+          print("CUDA version:", torch.version.cuda)
+
+          if not torch.cuda.is_available():
+              raise RuntimeError("GPU NOT AVAILABLE")
+
+          print("GPU count:", torch.cuda.device_count())
+          for i in range(torch.cuda.device_count()):
+              print(f"GPU {i}:", torch.cuda.get_device_name(i))
+
+          x = torch.randn((1024, 1024), device="cuda")
+          y = x @ x
+          torch.cuda.synchronize()
+          print("CUDA tensor test: OK", float(y.mean()))
+
+          Path("/kaggle/working/gpu_ok.txt").write_text(
+              "GPU_OK\n" + torch.cuda.get_device_name(0) + "\n",
+              encoding="utf-8",
+          )
+          print("=== GPU TEST PASSED ===")
+          PY
+
+          cat > kaggle_gpu_test/kernel-metadata.json <<'JSON'
+          {
+            "id": "daya11/bhakti-palm-art-gpu-test",
+            "title": "Bhakti Palm Art GPU Test",
+            "code_file": "gpu_test.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": "true",
+            "enable_gpu": "true",
+            "enable_internet": "false",
+            "machine_shape": "NvidiaTeslaT4"
+          }
+          JSON
+
+          echo "Pushing dedicated GPU test kernel..."
+          kaggle kernels push --accelerator NvidiaTeslaT4 --timeout 300 -p kaggle_gpu_test
+
+          for i in $(seq 1 30); do
+            STATUS="$(kaggle kernels status daya11/bhakti-palm-art-gpu-test 2>&1 || true)"
+            echo "$STATUS"
+
+            if echo "$STATUS" | grep -qiE "complete|completed|success"; then
+              echo "Kaggle GPU test completed."
+              break
+            fi
+
+            if echo "$STATUS" | grep -qiE "error|failed"; then
+              echo "Kaggle GPU test FAILED."
+              kaggle kernels output daya11/bhakti-palm-art-gpu-test -p kaggle_gpu_output --force || true
+              find kaggle_gpu_output -type f -maxdepth 5 -print -exec sh -c 'echo "===== {} ====="; cat "{}" 2>/dev/null || true' \;
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          kaggle kernels output daya11/bhakti-palm-art-gpu-test -p kaggle_gpu_output --force
+          find kaggle_gpu_output -type f -maxdepth 5 -print -exec cat {} \;
+
+          if [ ! -f kaggle_gpu_output/gpu_ok.txt ] && ! find kaggle_gpu_output -name gpu_ok.txt -print -quit | grep -q .; then
+            echo "gpu_ok.txt was not returned."
+            exit 1
+          fi
+
+          echo "=== GITHUB -> KAGGLE GPU PATH IS WORKING ==="
