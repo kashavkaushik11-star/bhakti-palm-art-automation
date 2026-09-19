@@ -20,25 +20,30 @@ jobs:
       - name: Install Kaggle CLI
         run: pip install -q -U kaggle
 
+      - name: Verify Kaggle credentials
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KAGGLE_API_TOKEN:-}" ]; then
+            echo "ERROR: KAGGLE_API_TOKEN GitHub Secret is missing or empty."
+            exit 1
+          fi
+          echo "KAGGLE_API_TOKEN is present."
+
       - name: Pull existing Kaggle notebook
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
         run: |
           set -euo pipefail
-          test -n "$KAGGLE_KERNEL_ID"
           mkdir -p kaggle_kernel
-          kaggle kernels pull "$KAGGLE_KERNEL_ID" -m -p kaggle_kernel
+          kaggle kernels pull "daya11/ai-video-generator" -m -p kaggle_kernel
           echo "Pulled Kaggle kernel successfully."
           cat kaggle_kernel/kernel-metadata.json
 
       - name: Push and run existing Kaggle notebook
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
         run: |
           set -euo pipefail
           kaggle kernels push -p kaggle_kernel
@@ -46,13 +51,10 @@ jobs:
       - name: Poll Kaggle run
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
         run: |
           set -euo pipefail
           for i in $(seq 1 60); do
-            STATUS="$(kaggle kernels status "$KAGGLE_KERNEL_ID" 2>&1 || true)"
+            STATUS="$(kaggle kernels status "daya11/ai-video-generator" 2>&1 || true)"
             echo "$STATUS"
 
             if echo "$STATUS" | grep -qiE "complete|completed|success"; then
@@ -74,13 +76,10 @@ jobs:
       - name: Download Kaggle output
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
         run: |
           set -euo pipefail
           mkdir -p kaggle_output
-          kaggle kernels output "$KAGGLE_KERNEL_ID" -p kaggle_output --force
+          kaggle kernels output "daya11/ai-video-generator" -p kaggle_output --force
           echo "Kaggle output:"
           find kaggle_output -type f -maxdepth 5 -print
 
