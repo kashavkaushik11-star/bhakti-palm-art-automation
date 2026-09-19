@@ -104,94 +104,159 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    token = os.environ.get("HF_TOKEN", "").strip()
+    token = os.environ.get("KAGGLE_API_TOKEN", "").strip()
     if not token:
-        raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
+        raise RuntimeError("Missing GitHub Secret: KAGGLE_API_TOKEN")
     if not REFERENCE.exists():
         raise RuntimeError(f"Missing palm reference image: {REFERENCE}")
 
-    # Use Hugging Face Inference Providers for reference-guided image editing.
-    # This removes the OpenRouter credit dependency that was failing with HTTP 402.
-    from huggingface_hub import InferenceClient
+    # Run the image generation on Kaggle GPU instead of Hugging Face Inference Providers.
+    # Kaggle executes the diffusion model locally, so HF paid inference credits are not used.
+    kernel_id = os.environ.get("KAGGLE_PALM_KERNEL_ID", "daya11/bhakti-palm-art-gpu").strip()
+    job_dir = WORK / "kaggle_palm_kernel"
+    output_dir = WORK / "kaggle_output"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    generation_prompt = f"""
-Create a NEW photorealistic vertical 9:16 devotional Palm-Art photograph.
+    reference_url = (
+        "https://raw.githubusercontent.com/"
+        "kashavkaushik11-star/bhakti-palm-art-automation/main/palm_reference.jpg.jpg"
+    )
 
-Use the supplied reference image ONLY as a structural/style guide for:
-- the real human palm-up hand
-- complete hand framing from wrist through all five fingertips
-- dense handmade blue/indigo ballpoint-pen artwork directly on skin
-- white paper background and realistic macro photography
+    generator_code = f'''import os
+import subprocess
+import sys
+from pathlib import Path
 
-REQUESTED NEW ARTWORK:
-{prompt}
+# Install only the libraries needed inside the Kaggle GPU runtime.
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q",
+     "diffusers>=0.40.0", "transformers>=4.49.0", "accelerate>=1.2.0",
+     "safetensors", "pillow"],
+    check=True,
+)
 
-CRITICAL RESULT:
-One real adult human hand, palm facing camera, completely visible, five natural separated fingers
-and one thumb. The entire hand is the hero subject. Cover nearly all visible skin with dense,
-continuous blue/indigo ballpoint linework: fine hatching, cross-hatching, stippling, contour
-lines and thousands of imperfect handmade pen strokes following real palm creases.
+import requests
+import torch
+from PIL import Image, ImageOps
+from diffusers import AutoPipelineForImage2Image
 
-Place the requested Hindu devotional figure clearly and recognizably in the CENTER of the palm.
-Build a dense miniature devotional world around it with many tiny connected scenes appropriate
-to the requested subject. The devotional artwork, not a generic landscape, must dominate the palm.
+REFERENCE_URL = {reference_url!r}
+PROMPT = {prompt!r}
+OUT = Path("/kaggle/working/palm_art.png")
+REF = Path("/kaggle/working/palm_reference.jpg")
 
-Keep realistic skin pores, fingerprints, wrinkles and natural nails visible between the ink.
-Add 2-3 real blue/black ballpoint pens beside the wrist on clean white paper.
-Premium macro editorial photograph, sharp ink detail, natural skin texture and soft realistic shadows.
+print("CUDA available:", torch.cuda.is_available())
+if not torch.cuda.is_available():
+    raise RuntimeError("Kaggle GPU is not available.")
 
-DO NOT create tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector
-art, paint, watercolor, thick marker, solid blue patches, sparse symbols, blank fingers,
-mountain-only artwork, generic landscape-only artwork, extra fingers, fused fingers, malformed
-hands, cropped fingertips, duplicate hands, watermark, logo, large readable text or multicolored ink.
+r = requests.get(REFERENCE_URL, timeout=120)
+r.raise_for_status()
+REF.write_bytes(r.content)
 
-Invent completely new devotional artwork. Do not copy the exact deity drawing, text or composition
-from the reference.
-""".strip()
+init = Image.open(REF).convert("RGB")
+# SDXL img2img is most reliable around 768x1024/1024x1024.
+init = ImageOps.exif_transpose(init)
+init.thumbnail((768, 1024), Image.Resampling.LANCZOS)
+canvas = Image.new("RGB", (768, 1024), "white")
+canvas.paste(init, ((768-init.width)//2, (1024-init.height)//2))
+init = canvas
 
-    client = InferenceClient(provider="auto", api_key=token)
-    last_error = None
+negative = (
+    "tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector art, "
+    "watercolor, thick marker, solid blue patches, sparse symbols, blank fingers, extra fingers, "
+    "fused fingers, malformed hand, cropped fingertips, duplicate hands, watermark, logo, text, "
+    "multicolored ink, generic landscape, landscape only"
+)
 
-    # Try Kontext first because it is designed for image-to-image editing/reference guidance.
-    models = [
-        "black-forest-labs/FLUX.1-Kontext-dev",
-        "black-forest-labs/FLUX.2-klein-9B",
-    ]
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+print("Loading:", model_id)
+pipe = AutoPipelineForImage2Image.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16,
+    variant="fp16",
+    use_safetensors=True,
+)
+pipe.enable_model_cpu_offload()
 
-    for model in models:
-        for attempt in range(2):
-            try:
-                print(f"Trying Hugging Face image model: {model} (attempt {attempt + 1}/2)")
-                with REFERENCE.open("rb") as fh:
-                    reference_bytes = fh.read()
+print("Generating Palm-Art...")
+result = pipe(
+    prompt=PROMPT,
+    negative_prompt=negative,
+    image=init,
+    strength=0.52,
+    guidance_scale=7.5,
+    num_inference_steps=28,
+    width=768,
+    height=1024,
+).images[0]
 
-                image = client.image_to_image(
-                    reference_bytes,
-                    prompt=generation_prompt,
-                    model=model,
-                )
+# Convert to the portrait working canvas used by the GitHub video pipeline.
+result = ImageOps.exif_transpose(result).convert("RGB")
+final = Image.new("RGB", (768, 1344), "white")
+result.thumbnail((768, 1344), Image.Resampling.LANCZOS)
+final.paste(result, ((768-result.width)//2, (1344-result.height)//2))
+final.save(OUT, "PNG")
+print("Saved:", OUT, OUT.stat().st_size)
+'''
 
-                image = ImageOps.exif_transpose(image).convert("RGB")
-                target_w, target_h = 768, 1344
-                image.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
-                canvas = Image.new("RGB", (target_w, target_h), "white")
-                left = (target_w - image.width) // 2
-                top = (target_h - image.height) // 2
-                canvas.paste(image, (left, top))
-                canvas.save(output, format="PNG")
+    metadata = {
+        "id": kernel_id,
+        "title": "Bhakti Palm Art GPU",
+        "code_file": "generator.py",
+        "language": "python",
+        "kernel_type": "script",
+        "is_private": "true",
+        "enable_gpu": "true",
+        "enable_internet": "true",
+        "machine_shape": "NvidiaTeslaT4",
+        "dataset_sources": [],
+        "competition_sources": [],
+        "kernel_sources": [],
+        "model_sources": [],
+    }
 
-                if output.stat().st_size < 10000:
-                    raise RuntimeError("Hugging Face returned an unexpectedly small image file.")
+    (job_dir / "generator.py").write_text(generator_code, encoding="utf-8")
+    (job_dir / "kernel-metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
 
-                print(f"Image generated with Hugging Face Inference Providers: {model}")
-                return
-            except Exception as exc:
-                last_error = str(exc)
-                print(f"Hugging Face image attempt failed: {last_error}")
-                if attempt < 1:
-                    time.sleep(10)
+    print(f"Submitting Kaggle GPU image job: {kernel_id}")
+    subprocess.run(["kaggle", "kernels", "push", "-p", str(job_dir)], check=True)
 
-    raise RuntimeError(f"Reference-guided Palm-Art generation failed: {last_error}")
+    for attempt in range(1, 61):
+        status = subprocess.run(
+            ["kaggle", "kernels", "status", kernel_id],
+            text=True,
+            capture_output=True,
+        )
+        combined = (status.stdout + "\n" + status.stderr).strip()
+        print(combined)
+        low = combined.lower()
+        if "complete" in low or "completed" in low or "success" in low:
+            break
+        if "error" in low or "failed" in low:
+            raise RuntimeError(f"Kaggle Palm-Art job failed: {combined}")
+        time.sleep(30)
+    else:
+        raise RuntimeError("Timed out waiting for Kaggle Palm-Art GPU job.")
+
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["kaggle", "kernels", "output", kernel_id, "-p", str(output_dir), "--force"],
+        check=True,
+    )
+
+    candidates = list(output_dir.rglob("palm_art.png"))
+    if not candidates:
+        raise RuntimeError("Kaggle completed but palm_art.png was not returned.")
+    shutil.copy2(candidates[0], output)
+
+    image = ImageOps.exif_transpose(Image.open(output).convert("RGB"))
+    image.save(output, "PNG")
+    if output.stat().st_size < 10000:
+        raise RuntimeError("Kaggle returned an unexpectedly small image file.")
+    print("Palm-Art image generated on Kaggle GPU and downloaded successfully.")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -283,7 +348,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["GEMINI_API_KEY", "HF_TOKEN"]
+    required = ["GEMINI_API_KEY", "KAGGLE_API_TOKEN"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -342,7 +407,7 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Hugging Face FLUX Kontext reference edit", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Kaggle GPU SDXL image-to-image", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
