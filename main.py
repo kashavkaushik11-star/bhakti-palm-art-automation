@@ -168,7 +168,7 @@ composition from the reference.
         1344,
         42,
         "turbo",
-        api_name="generate",
+        api_name="/generate",
     )
 
     image_value = result[0] if isinstance(result, (list, tuple)) else result
@@ -198,7 +198,7 @@ composition from the reference.
     if output.stat().st_size < 10000:
         raise RuntimeError("Mage-Flow returned an unexpectedly small image file.")
 
-    print("Image generated with Microsoft Mage-Flow-Edit-Turbo via Hugging Face ZeroGPU.")
+    print("Image generated with Mage-Flow-Edit-Turbo via the verified Hugging Face community ZeroGPU Space.")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -349,7 +349,7 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Sourceful Riverflow V2.5 Fast via OpenRouter (reference edit)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Mage-Flow-Edit-Turbo via Hugging Face community ZeroGPU Space (reference edit)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
