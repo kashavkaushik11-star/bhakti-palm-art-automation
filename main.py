@@ -161,7 +161,7 @@ reference while creating completely new devotional artwork.
             {"type": "text", "text": generation_prompt},
             {"type": "image", "mime_type": "image/jpeg", "data": reference_b64},
         ],
-        "response_format": {"type": "image", "mime_type": "image/png", "aspect_ratio": "9:16"},
+        "response_format": {"type": "image", "mime_type": "image/jpeg", "aspect_ratio": "9:16"},
     }
 
     last_error = None
