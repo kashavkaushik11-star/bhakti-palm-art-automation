@@ -216,7 +216,7 @@ print("Saved:", OUT, OUT.stat().st_size)
     (job_dir / "kernel-metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
 
     print(f"Submitting Kaggle GPU image job: {kernel_id}")
-    subprocess.run(["kaggle", "kernels", "push", "-p", str(job_dir)], check=True)
+    subprocess.run(["kaggle", "kernels", "push", "--accelerator", "NvidiaTeslaT4", "--timeout", "1200", "-p", str(job_dir)], check=True)
 
     for attempt in range(1, 61):
         status = subprocess.run(
