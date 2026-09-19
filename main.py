@@ -110,8 +110,9 @@ def generate_reference_guided_image(prompt: str, output: Path):
     if not REFERENCE.exists():
         raise RuntimeError(f"Missing palm reference image: {REFERENCE}")
 
-    # Run the image generation on Kaggle GPU instead of Hugging Face Inference Providers.
-    # Kaggle executes the diffusion model locally, so HF paid inference credits are not used.
+    # Image generation is executed inside Kaggle GPU.  Use a smaller public
+    # SD-1.5-family model so the job is less likely to fail on Kaggle memory,
+    # download size, or model-access restrictions.
     kernel_id = os.environ.get("KAGGLE_PALM_KERNEL_ID", "daya11/bhakti-palm-art-gpu").strip()
     job_dir = WORK / "kaggle_palm_kernel"
     output_dir = WORK / "kaggle_output"
@@ -123,43 +124,42 @@ def generate_reference_guided_image(prompt: str, output: Path):
         "kashavkaushik11-star/bhakti-palm-art-automation/main/palm_reference.jpg.jpg"
     )
 
-    generator_code = f'''import os
-import subprocess
+    generator_code = f'''import subprocess
 import sys
 from pathlib import Path
 
-# Install only the libraries needed inside the Kaggle GPU runtime.
+# Keep the Kaggle environment predictable while using its preinstalled CUDA/PyTorch.
 subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q",
-     "diffusers>=0.40.0", "transformers>=4.49.0", "accelerate>=1.2.0",
-     "safetensors", "pillow"],
+    [sys.executable, "-m", "pip", "install", "-q", "-U",
+     "diffusers", "transformers", "accelerate", "safetensors", "pillow"],
     check=True,
 )
 
 import requests
 import torch
 from PIL import Image, ImageOps
-from diffusers import AutoPipelineForImage2Image
+from diffusers import StableDiffusionImg2ImgPipeline
 
 REFERENCE_URL = {reference_url!r}
 PROMPT = {prompt!r}
 OUT = Path("/kaggle/working/palm_art.png")
 REF = Path("/kaggle/working/palm_reference.jpg")
+MODEL_ID = "Lykon/dreamshaper-8"
 
 print("CUDA available:", torch.cuda.is_available())
 if not torch.cuda.is_available():
     raise RuntimeError("Kaggle GPU is not available.")
+print("Torch:", torch.__version__)
+print("GPU:", torch.cuda.get_device_name(0))
 
 r = requests.get(REFERENCE_URL, timeout=120)
 r.raise_for_status()
 REF.write_bytes(r.content)
 
-init = Image.open(REF).convert("RGB")
-# SDXL img2img is most reliable around 768x1024/1024x1024.
-init = ImageOps.exif_transpose(init)
-init.thumbnail((768, 1024), Image.Resampling.LANCZOS)
-canvas = Image.new("RGB", (768, 1024), "white")
-canvas.paste(init, ((768-init.width)//2, (1024-init.height)//2))
+init = ImageOps.exif_transpose(Image.open(REF).convert("RGB"))
+init.thumbnail((512, 768), Image.Resampling.LANCZOS)
+canvas = Image.new("RGB", (512, 768), "white")
+canvas.paste(init, ((512-init.width)//2, (768-init.height)//2))
 init = canvas
 
 negative = (
@@ -169,13 +169,12 @@ negative = (
     "multicolored ink, generic landscape, landscape only"
 )
 
-model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-print("Loading:", model_id)
-pipe = AutoPipelineForImage2Image.from_pretrained(
-    model_id,
+print("Loading:", MODEL_ID)
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+    MODEL_ID,
     torch_dtype=torch.float16,
     variant="fp16",
-    use_safetensors=True,
+    safety_checker=None,
 )
 pipe.enable_model_cpu_offload()
 
@@ -184,14 +183,11 @@ result = pipe(
     prompt=PROMPT,
     negative_prompt=negative,
     image=init,
-    strength=0.52,
-    guidance_scale=7.5,
-    num_inference_steps=28,
-    width=768,
-    height=1024,
+    strength=0.45,
+    guidance_scale=7.0,
+    num_inference_steps=24,
 ).images[0]
 
-# Convert to the portrait working canvas used by the GitHub video pipeline.
 result = ImageOps.exif_transpose(result).convert("RGB")
 final = Image.new("RGB", (768, 1344), "white")
 result.thumbnail((768, 1344), Image.Resampling.LANCZOS)
@@ -234,6 +230,24 @@ print("Saved:", OUT, OUT.stat().st_size)
         if "complete" in low or "completed" in low or "success" in low:
             break
         if "error" in low or "failed" in low:
+            # Kaggle exposes the kernel log as an output file even for failed
+            # runs. Download it here so the GitHub Action shows the real cause.
+            if output_dir.exists():
+                shutil.rmtree(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            debug = subprocess.run(
+                ["kaggle", "kernels", "output", kernel_id, "-p", str(output_dir), "--force"],
+                text=True,
+                capture_output=True,
+            )
+            print("Kaggle output command:", debug.stdout, debug.stderr)
+            for log_file in output_dir.rglob("*"):
+                if log_file.is_file():
+                    print(f"===== KAGGLE LOG: {log_file} =====")
+                    try:
+                        print(log_file.read_text(encoding="utf-8", errors="replace")[-20000:])
+                    except Exception as exc:
+                        print("Could not read log:", exc)
             raise RuntimeError(f"Kaggle Palm-Art job failed: {combined}")
         time.sleep(30)
     else:
