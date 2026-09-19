@@ -1,20 +1,18 @@
-name: Bhakti Palm Art Automation
+name: Qwen Image Edit 2511 Palm Art TEST
 
 on:
+  push:
+    branches: [qwen-edit-2511-free-test]
   workflow_dispatch:
     inputs:
       test_only:
-        description: 'Generate image/video for checking only (no Facebook/YouTube post)'
+        description: 'TEST ONLY - never post to Facebook or YouTube'
         required: false
         default: true
         type: boolean
-  schedule:
-    - cron: '30 5 * * *'
-    - cron: '30 8 * * *'
-    - cron: '30 11 * * *'
 
 jobs:
-  generate-and-post:
+  generate-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,28 +29,26 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run automation
+      - name: Run TEST ONLY
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FREEAI_API_KEY: ${{ secrets.FREEAI_API_KEY }}
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          TEST_ONLY: ${{ inputs.test_only || false }}
+          TEST_ONLY: true
         run: python main.py
 
-      - name: Upload test media
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true }}
+      - name: Upload TEST artifact
+        if: ${{ always() && github.ref_name == 'qwen-edit-2511-free-test' }}
         uses: actions/upload-artifact@v4
         with:
-          name: bhakti-palm-art-test
+          name: qwen-image-edit-2511-palm-art-test
           path: |
             work/palm_art.png
             work/wan2_video.mp4
             work/bhakti_reel.mp4
+          if-no-files-found: error
           retention-days: 3
