@@ -150,68 +150,94 @@ def _normalize_palm_image(path: Path):
         canvas.save(path, format="PNG")
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    """Two-pass Step1X test: first remove the old artwork while preserving the exact hand,
-    then draw the new Mahadev composition onto that cleaned hand. This prevents the old
-    mountain/Kedarnath composition from dominating the edit."""
+    """TEST 5: direct text-to-image on Free.ai. No reference image is supplied."""
     api_key = os.environ.get("FREEAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Missing GitHub Secret: FREEAI_API_KEY")
+    endpoint = "https://api.free.ai/v1/image/generate/"
+    direct_prompt = """
+Create a premium photorealistic macro photograph of ONE real adult human hand,
+palm facing the camera, with the COMPLETE hand visible from wrist through all five
+fingertips. Natural human anatomy, realistic nails, skin pores, fingerprints and
+skin creases. Light/white studio background. Place 2-3 real blue/black ballpoint
+pens beside the wrist.
 
-    clean = WORK / "clean_hand_stage1.png"
-    clean_prompt = """
-Use the supplied REAL HUMAN HAND PHOTO as the exact source. Preserve the SAME hand, wrist,
-palm, thumb, all five fingers, nails, proportions, skin pores, fingerprints and natural
-creases. Do not generate a new hand and do not crop it.
+The entire visible palm and fingers contain an intricate handmade devotional Palm
+Art drawing made DIRECTLY ON REAL SKIN with dense blue/indigo BALLPOINT PEN.
+The ink must look physically drawn into the skin creases with thousands of thin,
+imperfect pen strokes, cross-hatching, hatching and stippling. This is NOT a
+tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI,
+vector, marker, paint or watercolor.
 
-REMOVE ALL EXISTING DRAWING/ARTWORK/SCENERY/TEXT FROM THE SKIN and restore the palm and
-fingers to natural realistic skin texture. The result must be a clean, blank, photorealistic
-human palm with no artwork, no mountains, no temples, no deity, no writing, no symbols,
-no tattoo, no henna and no marks. Keep the surrounding light background and the complete
-hand visible from wrist through every fingertip. Do not alter hand anatomy.
+CRITICAL CENTRAL SUBJECT: in the EXACT CENTER OF THE PALM, draw a LARGE,
+highly recognizable IMAGE/FIGURE OF LORD SHIVA (MAHADEV), not merely a symbol.
+Show a clear devotional Shiva face with recognizable facial features, calm eyes,
+third eye, long matted jata hair with crescent moon, neck ornament/snake, shoulders
+and torso, seated in a classic meditative pose. Include a clearly drawn trishul
+beside Shiva. Shiva's actual figure must occupy approximately 35-45% of the palm
+and must be the strongest and most recognizable element.
+
+Around the central Shiva figure, add a smaller connected miniature devotional
+world: a small Himalayan temple, lamps, flowers, river/ghat, distant mountains,
+trees and tiny pilgrims. These are supporting details only. Do NOT make the
+mountains, temple, river, Om symbol, trishul alone, or a landscape the central
+subject.
+
+Make the composition look like a real artist has spent hours drawing this
+devotional scene on the hand with blue ballpoint pen. Preserve realistic skin
+texture underneath the drawing and natural finger contours. Editorial macro
+photography, crisp focus, realistic lighting, premium handcrafted appearance.
+
+ABSOLUTELY ZERO READABLE TEXT: no Hindi words, no English words, no letters,
+no numbers, no names, no signature, no handwriting, no captions, no labels,
+no signs, no banners, no watermark and no logo anywhere.
+
+ONE HAND ONLY. No extra fingers, no missing fingers, no fused fingers, no duplicate
+hand, no cropped fingertips, no cropped wrist, no malformed anatomy.
 """
-    _step1x_edit(api_key, REFERENCE, clean_prompt, clean)
-    _normalize_palm_image(clean)
-
-    final_prompt = f"""
-Use the supplied CLEAN REAL HUMAN HAND PHOTO as the exact source and preserve that same hand.
-Do NOT generate or replace the hand. Preserve wrist, palm shape, thumb, all five fingers,
-fingernails, skin pores, fingerprints and natural skin creases. Keep the COMPLETE hand visible.
-
-Now draw an authentic HAND-DRAWN DEVOTIONAL PALM ART directly on the natural skin using
-dense BLUE/INDIGO BALLPOINT PEN. This is a physical pen drawing on skin, not a tattoo,
-sticker, decal, printed glove or digital overlay.
-
-CRITICAL MAIN SUBJECT:
-Create a LARGE, unmistakable, recognizable DRAWN IMAGE OF LORD SHIVA / MAHADEV in the
-EXACT CENTER OF THE PALM. The viewer must immediately see Shiva's actual figure, not merely
-a symbol. Draw a recognizable Shiva face with calm eyes, third eye, long matted jata,
-crescent moon, neck ornament/snake, shoulders and torso, in a classic seated meditative
-pose. Include a clearly drawn trishul beside him. Shiva should occupy about 35-45% of the
-palm and be the dominant visual element.
-
-Around the central Shiva figure, create a smaller connected miniature devotional world:
-Kedarnath/Tungnath-style temple, tiny lamps, flowers, river/ghat, distant mountains,
-trees and tiny pilgrims. These are SUPPORTING details only. Do NOT make the mountain,
-temple, river, Om symbol or trishul alone the main subject.
-
-Use thousands of fine imperfect blue ballpoint strokes, cross-hatching, hatching and
-stippled details that follow the skin creases and contours. Preserve realistic skin
-texture underneath the ink. Make it look like a real macro photograph of an artist drawing
-this Shiva scene directly on the hand.
-
-ABSOLUTELY NO readable text anywhere: no Hindi, no English, no letters, no numbers, no
-names, no signature, no handwriting, no captions, no labels, no signs, no banners,
-no watermark-like writing. Temple signs must be blank/illegible.
-
-Avoid tattoo, henna, mehndi, decal, sticker, printed glove, CGI, vector art, marker,
-paint, watercolor, multicolored ink, malformed fingers, extra fingers, missing fingers,
-cropped wrist, cropped fingertips, duplicate hand, or landscape-only composition.
-
-MAIN SUBJECT: {prompt}
-"""
-    _step1x_edit(api_key, clean, final_prompt, output)
-    _normalize_palm_image(output)
-    print("Step1X two-pass image generated: clean-hand stage + Mahadev drawing stage.")
+    payload = {
+        "model": "flux",
+        "prompt": direct_prompt,
+        "width": 1024,
+        "height": 1536,
+    }
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = requests.post(
+                endpoint,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=300,
+            )
+            if not response.ok:
+                raise RuntimeError(f"Free.ai image generation failed ({response.status_code}): {response.text[:3000]}")
+            data = response.json()
+            image_url = (
+                data.get("output_url") or data.get("image_url") or data.get("url")
+                or data.get("data", {}).get("output_url") or data.get("data", {}).get("image_url")
+            )
+            if not image_url:
+                raise RuntimeError(f"Free.ai returned no image URL: {str(data)[:4000]}")
+            img = requests.get(image_url, timeout=300)
+            img.raise_for_status()
+            output.write_bytes(img.content)
+            if output.stat().st_size < 10000:
+                raise RuntimeError("Free.ai returned an unexpectedly small image.")
+            with Image.open(output) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                im.thumbnail((864, 1536), Image.Resampling.LANCZOS)
+                canvas = Image.new("RGB", (864, 1536), "white")
+                canvas.paste(im, ((864-im.width)//2, (1536-im.height)//2))
+                canvas.save(output, format="PNG")
+            print("TEST 5: direct Free.ai FLUX text-to-image generated without reference image.")
+            return
+        except Exception as exc:
+            last_error = str(exc)
+            print(f"Direct FLUX attempt {attempt + 1}/3 failed: {last_error}")
+            if attempt < 2:
+                time.sleep(min(10 * (attempt + 1), 30))
+    raise RuntimeError(f"Direct FLUX generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
