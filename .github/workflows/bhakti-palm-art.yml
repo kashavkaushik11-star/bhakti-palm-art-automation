@@ -1,56 +1,35 @@
-name: Bhakti Palm Art Automation
+name: ModelScope Qwen Image Edit Palm Art TEST
 
 on:
+  push:
+    branches: [modelscope-qwen-edit-2509-test]
   workflow_dispatch:
-    inputs:
-      test_only:
-        description: 'Generate image/video for checking only (no Facebook/YouTube post)'
-        required: false
-        default: true
-        type: boolean
-  schedule:
-    - cron: '30 5 * * *'
-    - cron: '30 8 * * *'
-    - cron: '30 11 * * *'
 
 jobs:
-  generate-and-post:
+  test-modelscope:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
-      - name: Run automation
+      - name: Run ModelScope TEST_ONLY
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODELSCOPE_TOKEN: ${{ secrets.MODELSCOPE_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
-          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          TEST_ONLY: ${{ inputs.test_only || false }}
+          TEST_ONLY: 'true'
         run: python main.py
-
-      - name: Upload test media
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true }}
+      - name: Upload ModelScope test media
         uses: actions/upload-artifact@v4
         with:
-          name: bhakti-palm-art-test
+          name: modelscope-qwen-edit-2509-palm-art-test
           path: |
             work/palm_art.png
             work/wan2_video.mp4
