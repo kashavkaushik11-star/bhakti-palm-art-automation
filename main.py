@@ -104,184 +104,74 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
-    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
-    if not account_id or not token:
-        raise RuntimeError("Missing GitHub Secrets: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN")
+    import base64, json
+    from gradio_client import Client, handle_file
 
-    import base64
+    try:
+        # FireRed Space accepts one or more base64-encoded input images.
+        with Image.open(REFERENCE) as src:
+            src = ImageOps.exif_transpose(src).convert("RGB")
+            src.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            src.save(buf, format="JPEG", quality=90)
+            b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
-    # Cloudflare's currently documented SDXL/Lightning endpoints expose the
-    # img2img fields in the schema, but the live backend can reject the image
-    # tensor with ERROR 3030. We therefore use a reliable two-stage pipeline:
-    # 1) LLaVA reads the reference and extracts STYLE ONLY.
-    # 2) Flux.1 Schnell generates a completely new image from that style blueprint.
-    # This keeps the reference influential without depending on the broken
-    # img2img backend path.
-    reference_bytes = REFERENCE.read_bytes()
+        images_json = json.dumps([b64])
+        fire_prompt = """Edit this real hand photograph into premium devotional Palm Art while preserving the SAME REAL HUMAN HAND.
 
-    vision_url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/llava-hf/llava-1.5-7b-hf"
-    )
-    vision_payload = {
-        "image": list(reference_bytes),
-        "prompt": (
-            "Analyze this reference image ONLY for its visual STYLE and medium. "
-            "Do not describe or preserve its specific religious subject, landmark, "
-            "written names, exact composition, or exact objects. Return a concise "
-            "style blueprint covering: real hand photography, palm/finger treatment, "
-            "blue ballpoint pen technique, density of linework, hatching, stippling, "
-            "paper/background, camera/macro look, lighting and realism. "
-            "This blueprint will be used to create a completely NEW devotional artwork."
-        ),
-        "max_tokens": 400,
-    }
+PRESERVE EXACTLY:
+real adult human hand, palm facing camera, complete wrist through all five fingertips, thumb plus four fingers, natural anatomy, nails, pores, fingerprints, palm creases, skin texture, lighting, camera perspective and white/light background. Do not generate a replacement hand and do not crop any fingertip.
 
-    style_text = ""
-    for attempt in range(3):
-        try:
-            vr = requests.post(
-                vision_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                json=vision_payload,
-                timeout=180,
-            )
-            if vr.ok:
-                vd = vr.json()
-                result = vd.get("result", vd)
-                if isinstance(result, dict):
-                    style_text = result.get("description") or result.get("response") or result.get("text") or ""
-                elif isinstance(result, str):
-                    style_text = result
-                if style_text.strip():
-                    break
-            else:
-                print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {vr.text[:1200]}")
-        except Exception as exc:
-            print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {exc}")
-        if attempt < 2:
-            time.sleep(min(5 * (attempt + 1), 15))
+ARTWORK:
+Cover the entire visible palm and fingers with dense authentic BLUE/INDIGO BALLPOINT-PEN drawing physically drawn directly on the skin. Use thousands of fine imperfect pen strokes, hatching, cross-hatching, contour lines and stippling following natural skin creases.
 
-    if not style_text.strip():
-        style_text = (
-            "Photorealistic macro photograph of a real palm-up human hand on clean white paper; "
-            "dense handmade blue and indigo ballpoint-pen artwork covering the palm and all five fingers; "
-            "fine cross-hatching, hatching and stippling; intricate miniature storytelling; realistic skin pores, "
-            "creases and natural nails; a few real ballpoint pens beside the hand; sharp ink detail; natural editorial lighting."
-        )
+CENTER:
+At the exact center of the palm, make a LARGE unmistakable, highly recognizable Lord Shiva / Mahadev figure occupying about 35–45% of the palm. It must be an actual devotional human/deity figure, not a symbol and not a landscape. Clearly show Mahadev's face, calm eyes, third eye, long matted jata hair, crescent moon, snake, shoulders/torso, meditative posture and trishul. Mahadev is the dominant focal point.
 
-    # FLUX.1 Schnell accepts prompts up to 2048 characters.
-    # Keep the reference-style summary compact so the request never exceeds
-    # Cloudflare's live model limit.
-    compact_style = " ".join(style_text.split())[:400]
-    compact_subject = " ".join(prompt.split())[:500]
-    generation_prompt = f"""Create a completely NEW photorealistic vertical devotional Palm-Art photograph.
-
-STYLE: {compact_style}
-SUBJECT: {compact_subject}
-
-CRITICAL COMPOSITION:
-A real adult human hand is held palm-up, centered and fully visible from wrist to fingertips.
-Show the COMPLETE hand: thumb plus four fingers, natural anatomy, five fingers total, no cropped
-fingertips, no missing thumb, no extra fingers. The entire palm is the canvas.
-The devotional artwork must be the MAIN SUBJECT of the palm, not just a landscape.
-Create a recognizable sacred figure or devotional scene in the CENTER of the palm, chosen from
-the requested subject: Krishna playing flute, Radha-Krishna, Shiva/Mahadev, Hanuman, Ram-Sita,
-Durga, Ganesh or another clearly recognizable Hindu devotional subject. Surround the main figure
-with a dense miniature devotional world: temple, lamps, flowers, river, mountains, trees,
-pilgrims and sacred symbols appropriate to the requested subject.
-
-AUTHENTIC PEN-ART:
-The artwork is painstakingly hand-drawn directly on real human skin using BLUE/INDIGO BALLPOINT PEN.
-Cover almost the entire palm and fingers with continuous dense fine pen linework. Use thousands of
-thin imperfect handwritten strokes, contour lines, cross-hatching, hatching, stippling and tiny
-sketch marks that follow the natural palm creases and finger contours. The linework must remain
-clearly visible and handmade. Keep skin pores, wrinkles, fingerprints and natural nails visible
-between the ink strokes. The ink must look physically drawn onto the skin, not printed.
+AROUND HIM:
+Add a dense connected miniature devotional world in the remaining palm: Himalayan temple, bells, oil lamps, flowers, river/ghat, mountains, trees and tiny pilgrims. These are secondary details.
 
 PHOTOGRAPH:
-Premium realistic macro photograph, clean white background, soft natural studio lighting,
-sharp focus on the hand and ink, realistic skin texture, subtle shadows, editorial photography.
-Place 2-3 real blue/black ballpoint pens beside the wrist as physical drawing tools.
+Make the result look like a real macro editorial photograph of real skin with blue ballpoint ink physically on it. Put 2–3 real blue/black ballpoint pens beside the wrist. Keep natural skin visible between ink strokes.
 
-STRICTLY AVOID:
-tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector art,
-thick marker, paint, watercolor, sparse symbols, isolated blue patches, blank fingers,
-generic mountain-only landscape, landscape-only composition, unreadable blobs, extra fingers,
-malformed fingers, fused fingers, cropped hand, cropped fingertips, duplicate hand, watermark,
-logo, large readable text, colored ink.
+ABSOLUTE NEGATIVE:
+No tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, 3D render, vector, marker, paint, watercolor, plastic/synthetic skin, sculpture, generic blue nails, blank fingers, mountain-only scene, landscape-only scene, extra/missing/fused/malformed fingers, cropped hand, watermark, logo, readable text, signature, name, letters or typography."""
 
-The result must look like a REAL PHOTOGRAPH of an artist who painstakingly drew an intricate
-Hindu devotional scene directly across a real palm with a blue ballpoint pen. Keep the entire
-hand visible and make the devotional figure clearly recognizable."""
+        client = Client("prithivMLmods/FireRed-Image-Edit-1.0-Fast")
+        result = client.predict(
+            images_b64_json=images_json,
+            prompt=fire_prompt,
+            seed=42,
+            randomize_seed=False,
+            guidance_scale=1.0,
+            steps=4,
+            api_name="/edit_image",
+        )
 
+        data = result
+        if isinstance(result, dict):
+            data = result.get("image") or result.get("output_image") or result
+        if isinstance(data, str) and data.startswith("data:image"):
+            _, encoded = data.split(",", 1)
+            output.write_bytes(base64.b64decode(encoded))
+        elif isinstance(data, str) and data.startswith(("http://", "https://")):
+            rr = requests.get(data, timeout=180)
+            rr.raise_for_status()
+            output.write_bytes(rr.content)
+        elif hasattr(data, "path"):
+            shutil.copy2(data.path, output)
+        else:
+            raise RuntimeError(f"Unexpected FireRed response: {str(result)[:3000]}")
 
-    flux_url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/black-forest-labs/flux-1-schnell"
-    )
-    # The live Flux.1 Schnell endpoint rejects the optional /seed field.
-    # Keep the payload limited to fields accepted by the current API.
-    flux_payload = {
-        "prompt": generation_prompt,
-        "steps": 8,
-    }
-
-    last_error = None
-    for attempt in range(3):
-        try:
-            r = requests.post(
-                flux_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                json=flux_payload,
-                timeout=300,
-            )
-            if not r.ok:
-                raise RuntimeError(
-                    f"Cloudflare Flux image generation failed ({r.status_code}): {r.text[:2500]}"
-                )
-
-            data = r.json()
-            result = data.get("result", data)
-            image_b64 = result.get("image") if isinstance(result, dict) else None
-            if not image_b64:
-                raise RuntimeError(f"Cloudflare Flux returned no image: {str(data)[:2500]}")
-
-            output.write_bytes(base64.b64decode(image_b64))
-            if output.stat().st_size < 10000:
-                raise RuntimeError("Cloudflare Flux returned an unexpectedly small image file.")
-
-            with Image.open(output) as im:
-                im = ImageOps.exif_transpose(im)
-                # Preserve the COMPLETE hand. Fit the generated image inside a 9:16 white canvas
-                # instead of center-cropping, which can cut off the thumb/fingertips.
-                target_w, target_h = 864, 1536
-                im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
-                canvas = Image.new("RGB", (target_w, target_h), "white")
-                left = (target_w - im.width) // 2
-                top = (target_h - im.height) // 2
-                if im.mode in ("RGBA", "LA"):
-                    canvas.paste(im.convert("RGBA"), (left, top), im.convert("RGBA"))
-                else:
-                    canvas.paste(im.convert("RGB"), (left, top))
-                canvas.save(output, format="PNG")
-
-            print("Image generated with Cloudflare LLaVA style analysis + Flux.1 Schnell.")
-            return
-        except Exception as exc:
-            last_error = str(exc)
-            print(f"Cloudflare Flux image attempt {attempt + 1}/3 failed: {last_error}")
-            if attempt < 2:
-                time.sleep(min(10 * (attempt + 1), 30))
-
-    raise RuntimeError(f"Cloudflare image generation failed: {last_error}")
+        with Image.open(output) as generated:
+            generated = ImageOps.exif_transpose(generated).convert("RGB")
+            generated.thumbnail((864, 1536), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", (864, 1536), "white")
+            canvas.paste(generated, ((864-generated.width)//2, (1536-generated.height)//2))
+            canvas.save(output, "PNG")
+        print("TEST_ONLY: FireRed-Image-Edit-1.1 HF Space completed.")
+    except Exception as exc:
+        raise RuntimeError(f"FireRed-Image-Edit-1.1 failed: {exc}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -373,7 +263,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
+    required = []
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -433,7 +323,7 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "FireRed-Image-Edit-1.1 via Hugging Face ZeroGPU", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
