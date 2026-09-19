@@ -104,15 +104,15 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    token = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    token = os.environ.get("HF_TOKEN", "").strip()
     if not token:
-        raise RuntimeError("Missing GitHub Secret: OPENROUTER_API_KEY")
+        raise RuntimeError("Missing GitHub Secret: HF_TOKEN")
     if not REFERENCE.exists():
         raise RuntimeError(f"Missing palm reference image: {REFERENCE}")
 
-    import base64
-    reference_b64 = base64.b64encode(REFERENCE.read_bytes()).decode("ascii")
-    reference_data_url = f"data:image/jpeg;base64,{reference_b64}"
+    # Use Hugging Face Inference Providers for reference-guided image editing.
+    # This removes the OpenRouter credit dependency that was failing with HTTP 402.
+    from huggingface_hub import InferenceClient
 
     generation_prompt = f"""
 Create a NEW photorealistic vertical 9:16 devotional Palm-Art photograph.
@@ -149,63 +149,49 @@ Invent completely new devotional artwork. Do not copy the exact deity drawing, t
 from the reference.
 """.strip()
 
-    payload = {
-        "model": "sourceful/riverflow-v2.5-fast",
-        "prompt": generation_prompt,
-        "input_references": [
-            {"type": "image_url", "image_url": {"url": reference_data_url}}
-        ],
-        "aspect_ratio": "9:16",
-        "reasoning": "medium",
-    }
-
+    client = InferenceClient(provider="auto", api_key=token)
     last_error = None
-    for attempt in range(3):
-        try:
-            r = requests.post(
-                "https://openrouter.ai/api/v1/images",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://github.com/kashavkaushik11-star/bhakti-palm-art-automation",
-                    "X-Title": "Bhakti Palm Art Automation - Riverflow Test",
-                },
-                json=payload,
-                timeout=360,
-            )
-            if not r.ok:
-                raise RuntimeError(f"OpenRouter Riverflow failed ({r.status_code}): {r.text[:3000]}")
 
-            data = r.json()
-            images = data.get("data") or []
-            b64 = images[0].get("b64_json") if images else None
-            if not b64:
-                raise RuntimeError(f"Riverflow returned no image data: {str(data)[:3000]}")
+    # Try Kontext first because it is designed for image-to-image editing/reference guidance.
+    models = [
+        "black-forest-labs/FLUX.1-Kontext-dev",
+        "black-forest-labs/FLUX.2-klein-9B",
+    ]
 
-            output.write_bytes(base64.b64decode(b64))
-            if output.stat().st_size < 10000:
-                raise RuntimeError("Riverflow returned an unexpectedly small image file.")
+    for model in models:
+        for attempt in range(2):
+            try:
+                print(f"Trying Hugging Face image model: {model} (attempt {attempt + 1}/2)")
+                with REFERENCE.open("rb") as fh:
+                    reference_bytes = fh.read()
 
-            with Image.open(output) as im:
-                im = ImageOps.exif_transpose(im).convert("RGB")
+                image = client.image_to_image(
+                    reference_bytes,
+                    prompt=generation_prompt,
+                    model=model,
+                )
+
+                image = ImageOps.exif_transpose(image).convert("RGB")
                 target_w, target_h = 768, 1344
-                im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+                image.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
                 canvas = Image.new("RGB", (target_w, target_h), "white")
-                left = (target_w - im.width) // 2
-                top = (target_h - im.height) // 2
-                canvas.paste(im, (left, top))
+                left = (target_w - image.width) // 2
+                top = (target_h - image.height) // 2
+                canvas.paste(image, (left, top))
                 canvas.save(output, format="PNG")
 
-            cost = (data.get("usage") or {}).get("cost")
-            print(f"Image generated with Sourceful Riverflow V2.5 Fast. Reported cost={cost}")
-            return
-        except Exception as exc:
-            last_error = str(exc)
-            print(f"Riverflow attempt {attempt + 1}/3 failed: {last_error}")
-            if attempt < 2:
-                time.sleep(min(10 * (attempt + 1), 30))
+                if output.stat().st_size < 10000:
+                    raise RuntimeError("Hugging Face returned an unexpectedly small image file.")
 
-    raise RuntimeError(f"Riverflow Palm-Art generation failed: {last_error}")
+                print(f"Image generated with Hugging Face Inference Providers: {model}")
+                return
+            except Exception as exc:
+                last_error = str(exc)
+                print(f"Hugging Face image attempt failed: {last_error}")
+                if attempt < 1:
+                    time.sleep(10)
+
+    raise RuntimeError(f"Reference-guided Palm-Art generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -297,7 +283,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["GEMINI_API_KEY", "OPENROUTER_API_KEY"]
+    required = ["GEMINI_API_KEY", "HF_TOKEN"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -356,12 +342,12 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Sourceful Riverflow V2.5 Fast via OpenRouter (reference edit)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Hugging Face FLUX Kontext reference edit", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Sourceful Riverflow V2.5 Fast via OpenRouter (reference edit)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Hugging Face FLUX Kontext reference edit", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
