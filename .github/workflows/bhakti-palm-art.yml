@@ -2,7 +2,7 @@ name: Bhakti Palm Art Automation
 
 on:
   push:
-    branches: [qwen-image-2-test]
+    branches: [step1x-free-test]
   workflow_dispatch:
     inputs:
       test_only:
@@ -31,8 +31,7 @@ jobs:
 
       - name: Run automation
         env:
-          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          DASHSCOPE_WORKSPACE_ID: ${{ secrets.DASHSCOPE_WORKSPACE_ID }}
+          FREEAI_API_KEY: ${{ secrets.FREEAI_API_KEY }}
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
