@@ -12,36 +12,53 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Install Kaggle CLI
         run: pip install -q kaggle
-      - name: Prepare Kaggle kernel
+
+      - name: Pull existing Kaggle test kernel
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
         run: |
-          test -n "$KAGGLE_USERNAME"
+          test -n "$KAGGLE_API_TOKEN"
+          test -n "$KAGGLE_KERNEL_ID"
           mkdir -p /tmp/kaggle_kernel
-          cp kaggle/powerpaint_test.py /tmp/kaggle_kernel/powerpaint_test.py
-          sed "s#PLACEHOLDER#$KAGGLE_USERNAME#" kaggle/kernel-metadata.json > /tmp/kaggle_kernel/kernel-metadata.json
+          kaggle kernels pull "$KAGGLE_KERNEL_ID" -m -p /tmp/kaggle_kernel
+          CODE_FILE="$(jq -r '.code_file' /tmp/kaggle_kernel/kernel-metadata.json)"
+          echo "Kaggle code file: $CODE_FILE"
+          case "$CODE_FILE" in
+            *.py) cp kaggle/powerpaint_test.py "/tmp/kaggle_kernel/$CODE_FILE" ;;
+            *) echo "Kaggle test notebook must be a Python Script (.py), not an .ipynb."; exit 1 ;;
+          esac
+          python - <<'PY'
+          import json
+          p="/tmp/kaggle_kernel/kernel-metadata.json"
+          d=json.load(open(p))
+          d["enable_gpu"]="true"
+          d["enable_internet"]="true"
+          d["is_private"]="true"
+          json.dump(d,open(p,"w"),indent=2)
+          PY
+
       - name: Push and run Kaggle kernel
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
         working-directory: /tmp/kaggle_kernel
-        run: |
-          test -n "$KAGGLE_API_TOKEN"
-          kaggle kernels push -p .
+        run: kaggle kernels push -p .
+
       - name: Poll Kaggle run
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
         run: |
-          KERNEL_ID="$KAGGLE_USERNAME/powerpaint-palm-art-test"
           for i in $(seq 1 120); do
-            STATUS="$(kaggle kernels status "$KERNEL_ID" 2>&1 || true)"
+            STATUS="$(kaggle kernels status "$KAGGLE_KERNEL_ID" 2>&1 || true)"
             echo "$STATUS"
             if echo "$STATUS" | grep -qiE "complete|error|failed"; then
               echo "$STATUS" | grep -qiE "error|failed" && exit 1
@@ -49,14 +66,16 @@ jobs:
             fi
             sleep 30
           done
+
       - name: Download Kaggle output
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KERNEL_ID: ${{ secrets.KAGGLE_KERNEL_ID }}
         run: |
           mkdir -p work
-          kaggle kernels output "$KAGGLE_USERNAME/powerpaint-palm-art-test" -p work --force
+          kaggle kernels output "$KAGGLE_KERNEL_ID" -p work --force
           ls -lah work
+
       - name: Upload TEST_ONLY artifact
         uses: actions/upload-artifact@v4
         with:
