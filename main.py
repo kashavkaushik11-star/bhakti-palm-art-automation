@@ -54,112 +54,86 @@ def choose_music(category: str) -> Path:
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     return output
 
-def generate_reference_guided_image(output: Path):
+def _qwen_edit(input_path: Path, prompt: str, output: Path):
     api_key = os.environ.get("FREEAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Missing GitHub Secret: FREEAI_API_KEY")
-
-    endpoint = "https://api.free.ai/v1/image/edit/"
-
-    prompt = """
-EDIT THIS EXACT REFERENCE PHOTO. Preserve the real adult human hand itself:
-preserve the same palm-up pose, wrist, thumb, all five fingers, fingernails,
-skin pores, fingerprints, natural creases, lighting, camera perspective and
-clean light background. Do NOT generate a new hand and do NOT change the hand
-anatomy.
-
-FIRST, COMPLETELY REMOVE/ERASE ALL EXISTING DRAWING, LANDSCAPE, TEMPLE,
-MOUNTAIN, WRITING, SIGNATURE OR OTHER ARTWORK FROM THE SKIN. The final skin
-must contain a NEW artwork only.
-
-THEN DRAW A PREMIUM, DENSE HANDMADE DEVOTIONAL PALM ART DIRECTLY ON THE REAL
-SKIN USING ONLY BLUE/INDIGO BALLPOINT PEN. The artwork must physically follow
-the palm creases and finger contours and must look like thousands of real
-ballpoint strokes: fine hatching, cross-hatching, contour lines, stippling and
-tiny imperfect hand-drawn marks. Keep natural skin texture visible through
-the ink. Cover almost the entire visible palm and fingers with connected
-devotional artwork.
-
-CRITICAL: EXACT CENTER OF THE PALM MUST CONTAIN A LARGE, UNMISTAKABLE,
-HIGHLY RECOGNIZABLE HAND-DRAWN FIGURE OF LORD SHIVA / MAHADEV. This must be
-an actual figure, NOT an Om symbol, NOT a trishul alone, and NOT a mountain.
-Make Shiva's face clearly recognizable, with calm eyes, third eye, long matted
-jata hair, crescent moon, snake around the neck, shoulders and torso, seated
-in meditation. A clearly drawn trishul is beside him. Shiva should occupy
-about 35-45% of the palm and be the dominant central subject.
-
-Around Shiva, add secondary miniature devotional details only: a small
-Himalayan temple, lamps, flowers, river/ghat, distant mountains, trees and
-tiny pilgrims. These supporting details must remain much smaller than Shiva.
-
-PHOTOREALISM IS ESSENTIAL. The result must look like a real macro photograph
-of a real person's hand on which an artist spent hours drawing with a blue
-ballpoint pen.
-
-STRICTLY NO tattoo, henna, mehndi, decal, sticker, printed glove, digital
-overlay, CGI, 3D render, vector art, marker, paint, watercolor, airbrush,
-plastic skin, synthetic hand, blank fingers, extra fingers, missing fingers,
-fused fingers, malformed anatomy, cropped fingertips, cropped wrist.
-
-ABSOLUTELY ZERO READABLE TEXT. No Hindi, English, letters, numbers, names,
-signature, handwriting, captions, labels, signs, banners, watermark or logo.
-Only blue/indigo ballpoint ink. Keep the complete hand visible.
-"""
-
-    with REFERENCE.open("rb") as fh:
-        files = {
-            "image": (
-                REFERENCE.name,
-                fh,
-                "image/jpeg",
-            )
-        }
-        data = {
-            "model": "qwen-image-edit",
-            "prompt": prompt,
-            "operation": "edit",
-        }
+    with input_path.open("rb") as fh:
         response = requests.post(
-            endpoint,
+            "https://api.free.ai/v1/image/edit/",
             headers={"Authorization": f"Bearer {api_key}"},
-            files=files,
-            data=data,
+            files={"image": (input_path.name, fh, "image/jpeg")},
+            data={"model": "qwen-image-edit", "prompt": prompt, "operation": "edit"},
             timeout=600,
         )
-
     if not response.ok:
-        raise RuntimeError(
-            f"Free.ai Qwen-Image-Edit 2511 failed ({response.status_code}): "
-            f"{response.text[:4000]}"
-        )
-
-    content_type = response.headers.get("content-type", "")
-    if content_type.startswith("image/"):
+        raise RuntimeError(f"Free.ai Qwen edit failed ({response.status_code}): {response.text[:4000]}")
+    if response.headers.get("content-type", "").startswith("image/"):
         output.write_bytes(response.content)
     else:
-        try:
-            result = response.json()
-        except Exception:
-            raise RuntimeError(f"Free.ai returned non-image response: {response.text[:4000]}")
-
+        result = response.json()
+        data = result.get("data", result)
         image_url = (
-            result.get("output_url")
-            or result.get("image_url")
-            or result.get("url")
-            or result.get("share_url")
-            or result.get("data", {}).get("output_url")
-            or result.get("data", {}).get("image_url")
-            or result.get("data", {}).get("url")
+            result.get("output_url") or result.get("image_url") or result.get("url") or result.get("share_url")
+            or (data.get("output_url") if isinstance(data, dict) else None)
+            or (data.get("image_url") if isinstance(data, dict) else None)
+            or (data.get("url") if isinstance(data, dict) else None)
         )
         if not image_url:
             raise RuntimeError(f"Free.ai returned no image URL: {str(result)[:5000]}")
-
-        image_response = requests.get(image_url, timeout=600)
-        image_response.raise_for_status()
-        output.write_bytes(image_response.content)
-
+        ir = requests.get(image_url, timeout=600)
+        ir.raise_for_status()
+        output.write_bytes(ir.content)
     if output.stat().st_size < 10000:
         raise RuntimeError("Free.ai returned an unexpectedly small image.")
+    with Image.open(output) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        im.save(output, "PNG")
+
+
+def generate_reference_guided_image(output: Path):
+    # PASS 1: same reference photo, but a very simple cleanup instruction.
+    # PASS 2: use that cleaned hand as the base for the actual devotional drawing.
+    clean = WORK / "qwen_clean_hand.png"
+    clean_prompt = """
+Keep the exact real adult human hand and white studio setup unchanged.
+Do not generate a new hand. Keep the same wrist, palm, thumb, all five fingers,
+nails, skin pores, fingerprints, creases, lighting and camera perspective.
+
+ERASE ALL ARTWORK FROM THE SKIN. Remove every blue/black pen drawing, mountain,
+temple, river, pilgrim, symbol, Om, trident, text, name, signature and decorative
+mark. The skin must become completely natural and blank. Do not add anything.
+"""
+    _qwen_edit(REFERENCE, clean_prompt, clean)
+
+    art_prompt = """
+Keep this EXACT cleaned real adult human hand unchanged: same wrist, palm, thumb,
+all five fingers, nails, pores, fingerprints, creases, lighting and camera angle.
+Do NOT generate or replace the hand.
+
+Now draw an intricate devotional Palm Art directly on the skin using ONLY blue/indigo
+ballpoint pen. Cover almost the entire palm and fingers with dense fine handmade
+hatching, cross-hatching, contour lines and stippling that follows the natural
+creases.
+
+THE EXACT CENTER OF THE PALM MUST BE A LARGE, UNMISTAKABLE, HIGHLY RECOGNIZABLE
+FIGURE OF LORD SHIVA / MAHADEV, occupying 35-45% of the palm. Show his actual face,
+calm eyes, third eye, matted jata, crescent moon, snake, shoulders/torso in meditation
+and a trishul. This is a figurative drawing of Mahadev, NOT an Om symbol, NOT only a
+trishul, NOT a mountain and NOT only a temple.
+
+Around him, add much smaller connected miniature Himalayan devotional details:
+temple, lamps, flowers, river/ghat, mountains, trees and tiny pilgrims.
+
+Make it look physically hand-drawn directly on real skin, with pores and creases
+visible through the ink. Put 2-3 real blue/black ballpoint pens beside the wrist.
+
+ABSOLUTELY NO tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay,
+CGI, 3D render, vector art, marker, paint, watercolor, plastic skin, synthetic hand,
+extra/missing/fused/malformed fingers, cropped hand, watermark, logo, signature,
+name, letters, numbers or readable text.
+"""
+    _qwen_edit(clean, art_prompt, output)
 
     with Image.open(output) as im:
         im = ImageOps.exif_transpose(im).convert("RGB")
@@ -169,7 +143,7 @@ Only blue/indigo ballpoint ink. Keep the complete hand visible.
         canvas.paste(im, ((target_w - im.width) // 2, (target_h - im.height) // 2))
         canvas.save(output, "PNG")
 
-    print("TEST: Qwen-Image-Edit 2511 via Free.ai completed with the reference hand preserved.")
+    print("TEST: Qwen-Image-Edit 2511 two-pass cleanup + Mahadev edit completed.")
 
 def generate_motion_video(image: Path, output: Path):
     cmd = [
