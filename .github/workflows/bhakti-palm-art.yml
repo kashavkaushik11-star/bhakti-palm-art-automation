@@ -1,6 +1,8 @@
 name: Bhakti Palm Art Automation
 
 on:
+  push:
+    branches: [riverflow-palm-art-test]
   workflow_dispatch:
     inputs:
       test_only:
@@ -35,6 +37,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
@@ -43,11 +46,11 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          TEST_ONLY: ${{ inputs.test_only || false }}
+          TEST_ONLY: ${{ github.event_name == 'push' && 'true' || inputs.test_only || false }}
         run: python main.py
 
       - name: Upload test media
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.test_only == true) || github.event_name == 'push' }}
         uses: actions/upload-artifact@v4
         with:
           name: bhakti-palm-art-test
