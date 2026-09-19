@@ -20,6 +20,15 @@ jobs:
       - name: Install Kaggle CLI
         run: pip install -q -U kaggle
 
+      - name: Check Kaggle accelerator quota
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "=== KAGGLE ACCELERATOR QUOTA ==="
+          kaggle quota || true
+          echo "=== END QUOTA ==="
+
       - name: Run minimal Kaggle GPU test
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
@@ -30,10 +39,22 @@ jobs:
           mkdir -p kaggle_gpu_test kaggle_gpu_output
 
           cat > kaggle_gpu_test/gpu_test.py <<'PY'
+          import shutil
+          import subprocess
           import torch
           from pathlib import Path
 
           print("=== KAGGLE GPU TEST ===")
+          print("nvidia-smi path:", shutil.which("nvidia-smi"))
+          if shutil.which("nvidia-smi"):
+              result = subprocess.run(
+                  ["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"],
+                  capture_output=True,
+                  text=True,
+              )
+              print("nvidia-smi return code:", result.returncode)
+              print("nvidia-smi stdout:", result.stdout.strip())
+              print("nvidia-smi stderr:", result.stderr.strip())
           print("Torch:", torch.__version__)
           print("CUDA available:", torch.cuda.is_available())
           print("CUDA version:", torch.version.cuda)
