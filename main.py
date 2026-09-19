@@ -118,23 +118,31 @@ Edit the hand into premium devotional Palm Art. Remove the existing artwork, lan
 mountains, temple, writing and signature from the skin, then draw a completely new dense
 handmade devotional illustration DIRECTLY ON THE REAL SKIN using only blue/indigo ballpoint pen.
 
-The entire visible palm and every finger must be densely covered with fine authentic pen strokes,
-hatching, cross-hatching, contour lines and stippling following the skin creases.
+The entire visible palm and every finger must be densely covered with THIN AUTHENTIC BLUE BALLPOINT-PEN
+SKETCH LINES directly on skin. The result must look like thousands of imperfect hand-drawn biro strokes,
+not a painted illustration. Use fine hatching, cross-hatching, contour lines and stippling following
+the skin creases. Keep substantial natural skin visible between individual ink strokes. NO solid blue
+fill, NO smooth digital shading, NO airbrushed color, NO poster-like illustration, NO printed image.
 
 At the EXACT CENTER of the palm create one large, unmistakable and highly recognizable
 Lord Shiva / Mahadev figure occupying about 35-45 percent of the palm: recognizable face,
 calm eyes, third eye, jata, crescent moon, snake, shoulders/torso, meditative pose and trishul.
-The Mahadev figure must be the main subject, not a landscape.
+The Mahadev figure must be the main subject, not a landscape. Draw Mahadev with the SAME thin blue
+ballpoint line-art language as the rest of the palm: fine outlines, cross-hatching and stippling,
+with white/natural skin showing through. Do not render him as a smooth blue painted portrait.
 
 Surround him with a dense miniature Hindu devotional world drawn in the same blue ballpoint:
 Himalayan temple, bells, oil lamps, flowers, river/ghat, mountains, trees and tiny pilgrims.
 Add 2-3 real blue/black ballpoint pens beside the wrist.
 
 Make it a photorealistic macro editorial photograph with real skin texture and a clean light
-background. The ink must look physically drawn on skin, never printed.
+background. REMOVE every old reference-image object from the scene, including any notebook, paper,
+mountain sketch, old temple drawing or previous artwork outside the hand. Keep ONLY the real hand,
+new pen artwork and 2-3 loose ballpoint pens beside the wrist. The ink must look physically drawn on skin, never printed.
 
 STRICTLY avoid tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI,
-3D render, vector, marker, paint, watercolor, plastic/synthetic hand, sculpture, blue nails only,
+3D render, vector, marker, paint, watercolor, oil paint, digital painting, solid blue fill,
+smooth airbrushed shading, poster, printed artwork, plastic/synthetic hand, sculpture, blue nails only,
 blank fingers, extra/missing/fused/malformed fingers, cropped fingertips, watermark, logo,
 readable text, signature, name, letters or typography.
 """ + "\n" + prompt
