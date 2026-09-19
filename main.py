@@ -151,10 +151,10 @@ Mahadev and a dense Hindu devotional miniature world directly onto one real huma
 
     result = client.predict(
         instruction,
-        768,
-        1024,
+        640,
+        896,
         "euler",
-        30,
+        10,
         handle_file(str(REFERENCE)),
         None,
         None,
@@ -164,8 +164,8 @@ Mahadev and a dense Hindu devotional miniature world directly onto one real huma
         0.0,
         1.0,
         1,
-        2048,
-        786432,
+        1536,
+        573440,
         42,
         api_name="/run",
     )
