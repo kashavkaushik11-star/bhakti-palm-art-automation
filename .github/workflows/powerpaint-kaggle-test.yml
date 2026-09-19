@@ -1,0 +1,70 @@
+name: PowerPaint Kaggle Palm Art TEST
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - powerpaint-kaggle-test
+
+jobs:
+  kaggle-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Kaggle CLI
+        run: pip install -q kaggle
+      - name: Prepare Kaggle kernel
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        run: |
+          test -n "$KAGGLE_USERNAME"
+          mkdir -p /tmp/kaggle_kernel
+          cp kaggle/powerpaint_test.py /tmp/kaggle_kernel/powerpaint_test.py
+          sed "s#PLACEHOLDER#$KAGGLE_USERNAME#" kaggle/kernel-metadata.json > /tmp/kaggle_kernel/kernel-metadata.json
+      - name: Push and run Kaggle kernel
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        working-directory: /tmp/kaggle_kernel
+        run: |
+          test -n "$KAGGLE_API_TOKEN"
+          kaggle kernels push -p .
+      - name: Poll Kaggle run
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        run: |
+          KERNEL_ID="$KAGGLE_USERNAME/powerpaint-palm-art-test"
+          for i in $(seq 1 120); do
+            STATUS="$(kaggle kernels status "$KERNEL_ID" 2>&1 || true)"
+            echo "$STATUS"
+            if echo "$STATUS" | grep -qiE "complete|error|failed"; then
+              echo "$STATUS" | grep -qiE "error|failed" && exit 1
+              break
+            fi
+            sleep 30
+          done
+      - name: Download Kaggle output
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        run: |
+          mkdir -p work
+          kaggle kernels output "$KAGGLE_USERNAME/powerpaint-palm-art-test" -p work --force
+          ls -lah work
+      - name: Upload TEST_ONLY artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: powerpaint-kaggle-palm-art-test
+          path: |
+            work/palm_art.png
+            work/clean_hand.png
+            work/art_mask.png
+            work/paint_mask.png
+            work/reference_used.png
+          retention-days: 5
