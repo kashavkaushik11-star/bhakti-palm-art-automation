@@ -142,7 +142,7 @@ CGI, vector art, marker, paint, watercolor, sparse symbols, blank fingers, mount
 composition, malformed hand, fused fingers, extra fingers, missing fingers, cropped wrist,
 cropped fingertips, duplicate hand, watermark, logo, ANY text, lettering, signature, handwriting, name, caption, signboard, typography or multicolored ink.
 
-The output must look physically drawn on real skin, not pasted over the hand. Do not write any person name or signature anywhere on the hand or wrist.
+The output must look physically drawn on real skin, not pasted over the hand. Do not write any person name or signature anywhere on the hand or wrist. ZERO readable text anywhere in the image: no Hindi words, no English words, no letters, no numbers, no names, no captions, no labels, no signs, no banners, no signatures, no watermark-like writing. Any temple signage must be blank and illegible.
 """
 
     last_error = None
