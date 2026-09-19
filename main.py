@@ -104,124 +104,84 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    import base64
+    """Generate the Palm-Art by editing the real reference hand with Free.ai's
+    self-hosted Step1X-Edit v1p2. This is a NEW model for this repository.
+    Free.ai documents it as a free-pool model specifically supporting
+    referential prompts and hand/anatomy fixes.
+    """
+    api_key = os.environ.get("FREEAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("Missing GitHub Secret: FREEAI_API_KEY")
 
-    api_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
-    workspace_id = os.environ.get("DASHSCOPE_WORKSPACE_ID", "").strip()
-    if not api_key or not workspace_id:
-        raise RuntimeError("Missing GitHub Secrets: DASHSCOPE_API_KEY, DASHSCOPE_WORKSPACE_ID")
-
-    # Verified 2026-09-19 against Alibaba Cloud Model Studio official docs:
-    # qwen-image-2.0 supports image-to-image editing with 1-3 input images,
-    # Base64 input, negative prompts, 9:16 output, and no watermark.
-    # Singapore has a documented 100-image free quota for qwen-image-2.0.
-    endpoint = (
-        f"https://{workspace_id}.ap-southeast-1.maas.aliyuncs.com"
-        "/api/v1/services/aigc/multimodal-generation/generation"
-    )
-
-    image_b64 = base64.b64encode(REFERENCE.read_bytes()).decode("utf-8")
-    input_image = f"data:image/jpeg;base64,{image_b64}"
-
+    endpoint = "https://api.free.ai/v1/image/edit/"
     editing_prompt = f"""
-Edit the supplied photograph while preserving the REAL HUMAN HAND itself.
-Do NOT replace, redraw, regenerate, stylize, or distort the hand. Preserve the exact hand
-anatomy, wrist, palm shape, thumb, all four fingers, fingernails, skin pores, fingerprints,
-creases and natural proportions. Keep the COMPLETE hand visible from wrist through all five
-fingertips with no cropping and no extra fingers.
+Use the supplied REAL HUMAN HAND photo as the source image and preserve that exact hand.
+Do NOT replace the hand with a generated hand. Preserve wrist, palm shape, thumb, all five
+fingers, fingernails, natural skin pores, fingerprints and skin creases. Keep the COMPLETE
+hand visible from wrist through every fingertip. Do not crop or add fingers.
 
-Transform the existing hand into an authentic handmade devotional Palm-Art photograph.
-The artwork must be physically drawn DIRECTLY ON THE REAL SKIN using dense BLUE/INDIGO
-BALLPOINT PEN. The palm and all five fingers should be covered with continuous, intricate
-fine pen linework following the natural skin creases and finger contours. Use thousands of
-thin imperfect pen strokes, contour lines, cross-hatching, hatching, stippling and miniature
-hand-drawn details. The ink must visibly sit on and follow the skin; it must NOT look like
-a tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, vector art, paint,
-watercolor or a pasted illustration.
+Transform ONLY the visual artwork on the skin into authentic handmade devotional Palm Art.
+Draw the artwork DIRECTLY ON THE REAL SKIN using dense BLUE/INDIGO BALLPOINT PEN.
+Cover the palm and all five fingers with continuous intricate fine pen linework following
+the natural skin creases and finger contours. Use thousands of thin imperfect pen strokes,
+cross-hatching, hatching, stippling and miniature hand-drawn details.
 
 MAIN SUBJECT: {prompt}
-Make the requested Hindu devotional figure clearly recognizable and LARGE in the CENTER of
-the palm. Around it build a dense connected miniature devotional world appropriate to the
-subject: temples, lamps, flowers, river/ghat, mountains, trees, pilgrims and sacred details.
-The devotional figure must remain the visual focus, not a generic mountain landscape.
+The Hindu devotional figure must be clearly recognizable and LARGE in the CENTER of the
+palm. Around it create one dense connected miniature devotional world: temples, lamps,
+flowers, rivers/ghats, mountains, trees, pilgrims and sacred details appropriate to the
+subject. The central deity must be the visual focus, not a generic landscape.
 
-PHOTOGRAPHIC LOOK:
-premium photorealistic macro editorial photograph, real skin texture, natural nails,
-soft realistic shadows, clean white/light background, crisp fine blue ballpoint detail,
-natural studio lighting, and 2-3 real blue/black ballpoint pens placed beside the wrist.
+Make it look like a REAL MACRO PHOTOGRAPH of an artist drawing on actual skin:
+photorealistic skin texture, natural nails, realistic shadows, clean light background,
+crisp blue ballpoint lines, studio lighting, and 2-3 real blue/black ballpoint pens beside
+the wrist.
 
-STRICTLY AVOID:
-tattoo, henna, mehndi, decal, sticker, printed glove, CGI, digital art, vector,
-marker, thick ink, paint, watercolor, sparse symbols, blank fingers, mountain-only scene,
-landscape-only composition, malformed hand, fused fingers, extra fingers, missing fingers,
-cropped fingertips, cropped wrist, duplicate hand, watermark, logo, large text, multicolored ink.
+ABSOLUTELY AVOID tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay,
+CGI, vector art, marker, paint, watercolor, sparse symbols, blank fingers, mountain-only
+composition, malformed hand, fused fingers, extra fingers, missing fingers, cropped wrist,
+cropped fingertips, duplicate hand, watermark, logo, large text or multicolored ink.
 
-The final result must look like a REAL PHOTOGRAPH of an artist painstakingly drawing the
-entire Hindu devotional scene directly across a real palm with a blue ballpoint pen.
+The output must look physically drawn on real skin, not pasted over the hand.
 """
-
-    negative_prompt = (
-        "tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector art, "
-        "marker, paint, watercolor, sparse symbols, blank fingers, mountain-only landscape, "
-        "malformed hand, fused fingers, extra fingers, missing fingers, cropped fingertips, "
-        "cropped wrist, duplicate hand, watermark, logo, large text, multicolored ink"
-    )
-
-    payload = {
-        "model": "qwen-image-2.0",
-        "input": {
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"image": input_image},
-                    {"text": editing_prompt},
-                ],
-            }],
-        },
-        "parameters": {
-            "n": 1,
-            "negative_prompt": negative_prompt,
-            "prompt_extend": True,
-            "watermark": False,
-            "size": "720*1280",
-        },
-    }
 
     last_error = None
     for attempt in range(3):
         try:
-            r = requests.post(
-                endpoint,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=300,
-            )
-            if not r.ok:
+            with REFERENCE.open("rb") as fh:
+                response = requests.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    files={"image": ("palm_reference.jpg", fh, "image/jpeg")},
+                    data={
+                        "model": "step1x-edit",
+                        "prompt": editing_prompt,
+                        "operation": "edit",
+                    },
+                    timeout=300,
+                )
+            if not response.ok:
                 raise RuntimeError(
-                    f"Alibaba Qwen image edit failed ({r.status_code}): {r.text[:3000]}"
+                    f"Free.ai Step1X-Edit failed ({response.status_code}): {response.text[:3000]}"
                 )
 
-            data = r.json()
-            choices = data.get("output", {}).get("choices", [])
-            if not choices:
-                raise RuntimeError(f"Qwen returned no choices: {str(data)[:3000]}")
-
-            content = choices[0].get("message", {}).get("content", [])
-            image_url = next(
-                (item.get("image") for item in content if isinstance(item, dict) and item.get("image")),
-                None,
+            data = response.json()
+            image_url = (
+                data.get("output_url")
+                or data.get("image_url")
+                or data.get("url")
+                or data.get("data", {}).get("output_url")
+                or data.get("data", {}).get("image_url")
             )
             if not image_url:
-                raise RuntimeError(f"Qwen returned no output image URL: {str(data)[:3000]}")
+                raise RuntimeError(f"Free.ai returned no image URL: {str(data)[:4000]}")
 
             img = requests.get(image_url, timeout=300)
             img.raise_for_status()
             output.write_bytes(img.content)
+
             if output.stat().st_size < 10000:
-                raise RuntimeError("Qwen returned an unexpectedly small image file.")
+                raise RuntimeError("Free.ai returned an unexpectedly small image.")
 
             with Image.open(output) as im:
                 im = ImageOps.exif_transpose(im).convert("RGB")
@@ -233,15 +193,15 @@ entire Hindu devotional scene directly across a real palm with a blue ballpoint 
                 canvas.paste(im, (left, top))
                 canvas.save(output, format="PNG")
 
-            print("Image generated with Alibaba Cloud Model Studio qwen-image-2.0 (Singapore).")
+            print("Image generated with Free.ai Step1X-Edit v1p2.")
             return
         except Exception as exc:
             last_error = str(exc)
-            print(f"Qwen image attempt {attempt + 1}/3 failed: {last_error}")
+            print(f"Step1X-Edit attempt {attempt + 1}/3 failed: {last_error}")
             if attempt < 2:
                 time.sleep(min(10 * (attempt + 1), 30))
 
-    raise RuntimeError(f"Qwen image generation failed: {last_error}")
+    raise RuntimeError(f"Step1X-Edit generation failed: {last_error}")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -333,7 +293,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["DASHSCOPE_API_KEY", "DASHSCOPE_WORKSPACE_ID"]
+    required = ["FREEAI_API_KEY"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -393,12 +353,12 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Alibaba Cloud qwen-image-2.0 (Singapore, reference edit)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Free.ai Step1X-Edit v1p2 (self-hosted free-pool, reference edit)", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Free.ai Step1X-Edit v1p2", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
