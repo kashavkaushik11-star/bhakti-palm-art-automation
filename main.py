@@ -104,184 +104,119 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
-    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
-    if not account_id or not token:
-        raise RuntimeError("Missing GitHub Secrets: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN")
-
+    # ModelScope API-Inference: free daily API quota, Qwen Image Edit 2509 Inscene LoRA.
+    # The model card documents image_url input and async image-generation API.
     import base64
+    from io import BytesIO
 
-    # Cloudflare's currently documented SDXL/Lightning endpoints expose the
-    # img2img fields in the schema, but the live backend can reject the image
-    # tensor with ERROR 3030. We therefore use a reliable two-stage pipeline:
-    # 1) LLaVA reads the reference and extracts STYLE ONLY.
-    # 2) Flux.1 Schnell generates a completely new image from that style blueprint.
-    # This keeps the reference influential without depending on the broken
-    # img2img backend path.
-    reference_bytes = REFERENCE.read_bytes()
+    token = os.environ.get("MODELSCOPE_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("Missing GitHub Secret: MODELSCOPE_TOKEN")
 
-    vision_url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/llava-hf/llava-1.5-7b-hf"
+    reference_url = (
+        "https://raw.githubusercontent.com/kashavkaushik11-star/"
+        "bhakti-palm-art-automation/9ab089b8b6b09cad89d45b05fa252c7ff4b67f26/"
+        "palm_reference.jpg.jpg"
     )
-    vision_payload = {
-        "image": list(reference_bytes),
-        "prompt": (
-            "Analyze this reference image ONLY for its visual STYLE and medium. "
-            "Do not describe or preserve its specific religious subject, landmark, "
-            "written names, exact composition, or exact objects. Return a concise "
-            "style blueprint covering: real hand photography, palm/finger treatment, "
-            "blue ballpoint pen technique, density of linework, hatching, stippling, "
-            "paper/background, camera/macro look, lighting and realism. "
-            "This blueprint will be used to create a completely NEW devotional artwork."
-        ),
-        "max_tokens": 400,
+    generation_prompt = """
+Edit the supplied reference photo while preserving ONE REAL ADULT HUMAN HAND.
+Keep the exact palm-up hand, wrist, thumb, all four fingers, five natural fingertips,
+nails, skin pores, fingerprints, palm creases, lighting and camera perspective.
+
+FIRST erase the old drawing, old landscape, old temple, mountains, notebook/paper marks,
+writing and signature from the skin.
+
+THEN draw premium devotional Palm Art DIRECTLY ON THE REAL SKIN using ONLY BLUE/INDIGO
+BALLPOINT PEN. The artwork must look physically hand-drawn with thousands of thin,
+imperfect biro strokes: fine outlines, hatching, cross-hatching, contour lines and
+stippling. Keep natural skin visible between strokes. NO solid blue fill and NO smooth
+digital painting.
+
+At the EXACT CENTER of the palm place a LARGE, unmistakable, highly recognizable
+Lord Shiva / Mahadev figure occupying 35-45% of the palm: recognizable face, calm eyes,
+third eye, jata, crescent moon, snake, shoulders/torso, meditative pose and trishul.
+Mahadev is the MAIN SUBJECT.
+
+Around Mahadev create a dense connected miniature Hindu devotional world in the same
+thin blue ballpoint style: Himalayan temple, bells, oil lamps, flowers, river/ghat,
+mountains, trees and tiny pilgrims. Every visible finger must contain fine blue pen
+linework.
+
+Make it a photorealistic macro editorial photograph of real skin. Clean light background.
+Place 2-3 real blue/black ballpoint pens beside the wrist.
+
+STRICTLY NO tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI,
+3D render, vector, marker, paint, watercolor, oil paint, poster, printed artwork,
+plastic/synthetic hand, sculpture, blue nails only, blank fingers, extra/missing/fused/
+malformed fingers, cropped hand, watermark, logo, readable text, signature, name,
+letters or typography.
+""" + "\n" + prompt
+
+    url = "https://api-inference.modelscope.cn/v1/images/generations"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "X-ModelScope-Async-Mode": "true",
     }
-
-    style_text = ""
-    for attempt in range(3):
-        try:
-            vr = requests.post(
-                vision_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                json=vision_payload,
-                timeout=180,
-            )
-            if vr.ok:
-                vd = vr.json()
-                result = vd.get("result", vd)
-                if isinstance(result, dict):
-                    style_text = result.get("description") or result.get("response") or result.get("text") or ""
-                elif isinstance(result, str):
-                    style_text = result
-                if style_text.strip():
-                    break
-            else:
-                print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {vr.text[:1200]}")
-        except Exception as exc:
-            print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {exc}")
-        if attempt < 2:
-            time.sleep(min(5 * (attempt + 1), 15))
-
-    if not style_text.strip():
-        style_text = (
-            "Photorealistic macro photograph of a real palm-up human hand on clean white paper; "
-            "dense handmade blue and indigo ballpoint-pen artwork covering the palm and all five fingers; "
-            "fine cross-hatching, hatching and stippling; intricate miniature storytelling; realistic skin pores, "
-            "creases and natural nails; a few real ballpoint pens beside the hand; sharp ink detail; natural editorial lighting."
-        )
-
-    # FLUX.1 Schnell accepts prompts up to 2048 characters.
-    # Keep the reference-style summary compact so the request never exceeds
-    # Cloudflare's live model limit.
-    compact_style = " ".join(style_text.split())[:400]
-    compact_subject = " ".join(prompt.split())[:500]
-    generation_prompt = f"""Create a completely NEW photorealistic vertical devotional Palm-Art photograph.
-
-STYLE: {compact_style}
-SUBJECT: {compact_subject}
-
-CRITICAL COMPOSITION:
-A real adult human hand is held palm-up, centered and fully visible from wrist to fingertips.
-Show the COMPLETE hand: thumb plus four fingers, natural anatomy, five fingers total, no cropped
-fingertips, no missing thumb, no extra fingers. The entire palm is the canvas.
-The devotional artwork must be the MAIN SUBJECT of the palm, not just a landscape.
-Create a recognizable sacred figure or devotional scene in the CENTER of the palm, chosen from
-the requested subject: Krishna playing flute, Radha-Krishna, Shiva/Mahadev, Hanuman, Ram-Sita,
-Durga, Ganesh or another clearly recognizable Hindu devotional subject. Surround the main figure
-with a dense miniature devotional world: temple, lamps, flowers, river, mountains, trees,
-pilgrims and sacred symbols appropriate to the requested subject.
-
-AUTHENTIC PEN-ART:
-The artwork is painstakingly hand-drawn directly on real human skin using BLUE/INDIGO BALLPOINT PEN.
-Cover almost the entire palm and fingers with continuous dense fine pen linework. Use thousands of
-thin imperfect handwritten strokes, contour lines, cross-hatching, hatching, stippling and tiny
-sketch marks that follow the natural palm creases and finger contours. The linework must remain
-clearly visible and handmade. Keep skin pores, wrinkles, fingerprints and natural nails visible
-between the ink strokes. The ink must look physically drawn onto the skin, not printed.
-
-PHOTOGRAPH:
-Premium realistic macro photograph, clean white background, soft natural studio lighting,
-sharp focus on the hand and ink, realistic skin texture, subtle shadows, editorial photography.
-Place 2-3 real blue/black ballpoint pens beside the wrist as physical drawing tools.
-
-STRICTLY AVOID:
-tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector art,
-thick marker, paint, watercolor, sparse symbols, isolated blue patches, blank fingers,
-generic mountain-only landscape, landscape-only composition, unreadable blobs, extra fingers,
-malformed fingers, fused fingers, cropped hand, cropped fingertips, duplicate hand, watermark,
-logo, large readable text, colored ink.
-
-The result must look like a REAL PHOTOGRAPH of an artist who painstakingly drew an intricate
-Hindu devotional scene directly across a real palm with a blue ballpoint pen. Keep the entire
-hand visible and make the devotional figure clearly recognizable."""
-
-
-    flux_url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/black-forest-labs/flux-1-schnell"
-    )
-    # The live Flux.1 Schnell endpoint rejects the optional /seed field.
-    # Keep the payload limited to fields accepted by the current API.
-    flux_payload = {
+    payload = {
+        "model": "flymy-ai/qwen-image-edit-2509-inscene-lora",
         "prompt": generation_prompt,
-        "steps": 8,
+        "image_url": [reference_url],
     }
+    r = requests.post(url, headers=headers, json=payload, timeout=120)
+    if not r.ok:
+        raise RuntimeError(f"ModelScope submit failed ({r.status_code}): {r.text[:3000]}")
+    data = r.json()
+    task_id = data.get("task_id")
+    if not task_id:
+        raise RuntimeError(f"ModelScope returned no task_id: {str(data)[:3000]}")
 
-    last_error = None
-    for attempt in range(3):
-        try:
-            r = requests.post(
-                flux_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                json=flux_payload,
-                timeout=300,
-            )
-            if not r.ok:
-                raise RuntimeError(
-                    f"Cloudflare Flux image generation failed ({r.status_code}): {r.text[:2500]}"
-                )
+    task_url = f"https://api-inference.modelscope.cn/v1/tasks/{task_id}"
+    last = None
+    for _ in range(60):
+        tr = requests.get(
+            task_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-ModelScope-Task-Type": "image_generation",
+            },
+            timeout=60,
+        )
+        if not tr.ok:
+            last = tr.text[:1500]
+            time.sleep(5)
+            continue
+        td = tr.json()
+        status = td.get("task_status")
+        if status == "SUCCEED":
+            images = td.get("output_images") or td.get("images") or []
+            if not images:
+                raise RuntimeError(f"ModelScope succeeded but returned no image: {str(td)[:2500]}")
+            ir = requests.get(images[0], timeout=120)
+            ir.raise_for_status()
+            output.write_bytes(ir.content)
+            break
+        if status == "FAILED":
+            raise RuntimeError(f"ModelScope image task failed: {str(td)[:3000]}")
+        last = str(td)[:1500]
+        time.sleep(5)
+    else:
+        raise RuntimeError(f"ModelScope image task timed out: {last}")
 
-            data = r.json()
-            result = data.get("result", data)
-            image_b64 = result.get("image") if isinstance(result, dict) else None
-            if not image_b64:
-                raise RuntimeError(f"Cloudflare Flux returned no image: {str(data)[:2500]}")
+    if output.stat().st_size < 10000:
+        raise RuntimeError("ModelScope returned an unexpectedly small image file.")
 
-            output.write_bytes(base64.b64decode(image_b64))
-            if output.stat().st_size < 10000:
-                raise RuntimeError("Cloudflare Flux returned an unexpectedly small image file.")
+    with Image.open(output) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        target_w, target_h = 864, 1536
+        im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGB", (target_w, target_h), "white")
+        left = (target_w - im.width) // 2
+        top = (target_h - im.height) // 2
+        canvas.paste(im, (left, top))
+        canvas.save(output, format="PNG")
 
-            with Image.open(output) as im:
-                im = ImageOps.exif_transpose(im)
-                # Preserve the COMPLETE hand. Fit the generated image inside a 9:16 white canvas
-                # instead of center-cropping, which can cut off the thumb/fingertips.
-                target_w, target_h = 864, 1536
-                im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
-                canvas = Image.new("RGB", (target_w, target_h), "white")
-                left = (target_w - im.width) // 2
-                top = (target_h - im.height) // 2
-                if im.mode in ("RGBA", "LA"):
-                    canvas.paste(im.convert("RGBA"), (left, top), im.convert("RGBA"))
-                else:
-                    canvas.paste(im.convert("RGB"), (left, top))
-                canvas.save(output, format="PNG")
-
-            print("Image generated with Cloudflare LLaVA style analysis + Flux.1 Schnell.")
-            return
-        except Exception as exc:
-            last_error = str(exc)
-            print(f"Cloudflare Flux image attempt {attempt + 1}/3 failed: {last_error}")
-            if attempt < 2:
-                time.sleep(min(10 * (attempt + 1), 30))
-
-    raise RuntimeError(f"Cloudflare image generation failed: {last_error}")
+    print("Image generated with ModelScope Qwen Image Edit 2509 Inscene LoRA.")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
@@ -373,7 +308,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
+    required = ["MODELSCOPE_TOKEN"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -433,12 +368,12 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "ModelScope Qwen Image Edit 2509 Inscene LoRA", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "ModelScope Qwen Image Edit 2509 Inscene LoRA", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
