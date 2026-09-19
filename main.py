@@ -161,7 +161,7 @@ reference while creating completely new devotional artwork.
             {"type": "text", "text": generation_prompt},
             {"type": "image", "mime_type": "image/jpeg", "data": reference_b64},
         ],
-        "response_format": [{"type": "image"}],
+        "response_format": {"type": "image", "mime_type": "image/png", "aspect_ratio": "9:16"},
     }
 
     last_error = None
@@ -185,6 +185,16 @@ reference while creating completely new devotional artwork.
             # Current Interactions API returns an output_image block.
             if isinstance(data.get("output_image"), dict):
                 image_b64 = data["output_image"].get("data")
+            if not image_b64:
+                for step in data.get("steps", []):
+                    if isinstance(step, dict):
+                        for item in step.get("content", []):
+                            if isinstance(item, dict) and item.get("type") == "image" and item.get("data"):
+                                image_b64 = item["data"]
+                                break
+                    if image_b64:
+                        break
+
             if not image_b64:
                 for item in data.get("output", []):
                     if isinstance(item, dict):
@@ -312,7 +322,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
+    required = ["GEMINI_API_KEY"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
@@ -372,7 +382,7 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Gemini 2.5 Flash Image with Palm-Art reference", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
