@@ -318,6 +318,7 @@ def main():
     description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
 
     # Build a compact subject prompt; Riverflow receives the reference image separately.
+    # Isolated test trigger commit.
     deity_en = {
         "कृष्ण": "Lord Krishna playing flute",
         "राधा-कृष्ण": "Radha and Lord Krishna together",
