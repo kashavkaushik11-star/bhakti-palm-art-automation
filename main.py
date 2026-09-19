@@ -111,8 +111,11 @@ def generate_reference_guided_image(prompt: str, output: Path):
     from gradio_client import Client, handle_file
 
     generation_prompt = f"""
-Create a NEW photorealistic vertical devotional Palm-Art photograph from the supplied
-real-hand reference image.
+Create a NEW photorealistic vertical macro photograph of a REAL adult human hand from the supplied
+real-hand reference image. The hand must be the primary photographic subject BEFORE any artwork:
+real skin, real anatomy, real palm creases, real fingerprints, realistic nails and natural
+three-dimensional fingers. Do not render an illustrated, plastic, rubber, mannequin, CGI or
+cartoon hand.
 
 REQUESTED NEW ARTWORK:
 {prompt}
@@ -121,20 +124,29 @@ Use the reference only as a structural/style guide. Preserve the real adult palm
 hand geometry, complete wrist-to-fingertips framing and natural skin texture, but
 redesign the artwork completely.
 
-CRITICAL RESULT:
-One complete real adult human hand, palm facing camera, all five fingers and thumb
-fully visible, naturally separated, and fully inside the rectangular 9:16 frame.
-The hand itself is the hero subject and should fill most of the vertical frame from
-wrist to fingertips. Do NOT put the hand inside a circular plate, disk, frame, card,
-paper sheet, notebook, border, vignette, or decorative container.
+CRITICAL RESULT — REAL HAND FIRST:
+Show ONE complete real adult human hand, palm facing camera, with the entire hand visible
+from wrist through all five fingertips and thumb. Every finger must be anatomically realistic,
+naturally separated, correctly proportioned, three-dimensional and fully inside the 9:16 frame.
+The hand must occupy most of the image height. Preserve realistic joints, knuckles, tendons,
+finger pads, nails, palm creases, pores and subtle skin variation.
 
-Cover nearly all visible skin with dense continuous blue/indigo ballpoint-pen artwork:
-fine hatching, cross-hatching, stippling, contour lines and thousands of imperfect
-handmade pen strokes following real palm creases. The artwork should look physically
-drawn directly on real skin, not digitally placed on top.
+The ENTIRE visible hand must contain artwork — not just the center of the palm.
+Continuous blue/indigo ballpoint-pen linework must extend naturally across the wrist, lower palm,
+upper palm, thumb, index finger, middle finger, ring finger, little finger and all the way toward
+each fingertip. No large blank skin areas. The artwork density may vary for anatomy, but every
+visible part of the hand should have connected handmade pen strokes.
 
-Put the requested Hindu devotional figure LARGE, clearly recognizable, anatomically
-coherent, and visually dominant in the CENTER of the palm. It must be the main focal
+The ink must look physically drawn directly onto the real skin surface. It must follow the
+three-dimensional contours, wrinkles, folds and creases of the actual hand, with realistic
+line thickness, pressure variation, tiny imperfections, hatching, cross-hatching, stippling
+and contour strokes. NEVER make the artwork look like a flat image pasted, projected or
+wrapped over the hand.
+
+Put the requested Hindu devotional figure LARGE, clearly recognizable and visually dominant
+in the CENTER of the palm, while the rest of the full hand remains covered with connected
+supporting devotional line-art. The central figure is part of the pen drawing, not a separate
+sticker or printed image. It must be the main focal
 point, not a tiny figure hidden inside a landscape. Surround it with a dense miniature
 devotional world connected by fine hand-drawn pen lines: temples, lamps, flowers,
 river, trees, mountains, pilgrims and other subject-specific details. Use the
@@ -147,16 +159,21 @@ natural nails visible between ink strokes. Keep a clean seamless white/light-gra
 background with only 2-3 real blue/black ballpoint pens naturally placed beside the
 wrist.
 
-Photorealistic macro editorial photograph, sharp handmade ink detail, natural skin
-texture, realistic shadows, realistic skin color with blue ink only.
+Ultra-photorealistic macro editorial photograph of a real human hand, realistic skin color,
+natural pores and fingerprints, realistic nails and shadows, physically plausible lighting,
+sharp handmade blue/indigo ballpoint ink detail, shallow but controlled photographic depth of
+field, true skin texture visible between ink strokes. The hand must look like a real photograph
+taken with a macro camera, not an AI illustration.
 
 ABSOLUTELY NO readable writing anywhere in the image. No names, signatures, labels,
 captions, words, letters, numbers, arrows, signs, logos, watermarks, calligraphy,
 brand marks, notebook text, or decorative text. Do not invent a signature on the wrist
 or palm.
 
-DO NOT create tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay,
-CGI, vector art, paint, watercolor, marker, solid blue patches, sparse symbols,
+DO NOT create a fake-looking hand, mannequin hand, plastic hand, rubber hand, wax hand,
+CGI hand, illustrated hand, cartoon hand, deformed hand, tattoo, henna, mehndi, decal, sticker,
+printed glove, digital overlay, flat texture overlay, CGI artwork, vector art, paint, watercolor,
+marker, solid blue patches, sparse symbols,
 blank fingers, mountain-only artwork, generic landscape-only artwork, extra fingers,
 fused fingers, malformed hands, cropped fingertips, duplicate hands, circular plates,
 frames, borders, paper props, notebooks, or multicolored ink.
