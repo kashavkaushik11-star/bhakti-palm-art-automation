@@ -150,15 +150,12 @@ from the reference.
 """.strip()
 
     payload = {
-        "model": "sourceful/riverflow-v2.5-fast:free",
+        "model": "sourceful/riverflow-v2.5-fast",
         "prompt": generation_prompt,
         "input_references": [
             {"type": "image_url", "image_url": {"url": reference_data_url}}
         ],
-        "image_config": {
-            "aspect_ratio": "9:16",
-            "background_mode": "original",
-        },
+        "aspect_ratio": "9:16",
         "reasoning": "medium",
     }
 
