@@ -2,7 +2,7 @@ name: Bhakti Palm Art Automation
 
 on:
   push:
-    branches: [riverflow-palm-art-test]
+    branches: [main, riverflow-palm-art-test]
   workflow_dispatch:
     inputs:
       test_only:
