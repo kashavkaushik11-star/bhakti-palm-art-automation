@@ -154,7 +154,7 @@ composition from the reference.
     client_kwargs = {}
     if os.getenv("HF_TOKEN"):
         client_kwargs["token"] = os.getenv("HF_TOKEN")
-    client = Client("microsoft/mage-flow", **client_kwargs)
+    client = Client("mage-flow-community/mage-flow", **client_kwargs)
 
     result = client.predict(
         generation_prompt,
