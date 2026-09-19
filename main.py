@@ -103,105 +103,115 @@ def _first_local_file(value):
                 return found
     return None
 
+def _step1x_edit(api_key: str, source: Path, prompt: str, output: Path):
+    endpoint = "https://api.free.ai/v1/image/edit/"
+    last_error = None
+    for attempt in range(3):
+        try:
+            with source.open("rb") as fh:
+                response = requests.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    files={"image": ("palm_source.jpg", fh, "image/jpeg")},
+                    data={"model": "step1x-edit", "prompt": prompt, "operation": "edit"},
+                    timeout=300,
+                )
+            if not response.ok:
+                raise RuntimeError(f"Free.ai Step1X-Edit failed ({response.status_code}): {response.text[:3000]}")
+            data = response.json()
+            image_url = (
+                data.get("output_url") or data.get("image_url") or data.get("url")
+                or data.get("data", {}).get("output_url") or data.get("data", {}).get("image_url")
+            )
+            if not image_url:
+                raise RuntimeError(f"Free.ai returned no image URL: {str(data)[:4000]}")
+            img = requests.get(image_url, timeout=300)
+            img.raise_for_status()
+            output.write_bytes(img.content)
+            if output.stat().st_size < 10000:
+                raise RuntimeError("Free.ai returned an unexpectedly small image.")
+            return
+        except Exception as exc:
+            last_error = str(exc)
+            print(f"Step1X attempt {attempt + 1}/3 failed: {last_error}")
+            if attempt < 2:
+                time.sleep(min(10 * (attempt + 1), 30))
+    raise RuntimeError(f"Step1X generation failed: {last_error}")
+
+def _normalize_palm_image(path: Path):
+    with Image.open(path) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        target_w, target_h = 864, 1536
+        im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGB", (target_w, target_h), "white")
+        left = (target_w - im.width) // 2
+        top = (target_h - im.height) // 2
+        canvas.paste(im, (left, top))
+        canvas.save(path, format="PNG")
+
 def generate_reference_guided_image(prompt: str, output: Path):
-    """Generate the Palm-Art by editing the real reference hand with Free.ai's
-    self-hosted Step1X-Edit v1p2. This is a NEW model for this repository.
-    Free.ai documents it as a free-pool model specifically supporting
-    referential prompts and hand/anatomy fixes.
-    """
+    """Two-pass Step1X test: first remove the old artwork while preserving the exact hand,
+    then draw the new Mahadev composition onto that cleaned hand. This prevents the old
+    mountain/Kedarnath composition from dominating the edit."""
     api_key = os.environ.get("FREEAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Missing GitHub Secret: FREEAI_API_KEY")
 
-    endpoint = "https://api.free.ai/v1/image/edit/"
-    editing_prompt = f"""
-Use the supplied REAL HUMAN HAND photo as the source image and preserve that exact hand.
-Do NOT replace the hand with a generated hand. Preserve wrist, palm shape, thumb, all five
-fingers, fingernails, natural skin pores, fingerprints and skin creases. Keep the COMPLETE
-hand visible from wrist through every fingertip. Do not crop or add fingers.
+    clean = WORK / "clean_hand_stage1.png"
+    clean_prompt = """
+Use the supplied REAL HUMAN HAND PHOTO as the exact source. Preserve the SAME hand, wrist,
+palm, thumb, all five fingers, nails, proportions, skin pores, fingerprints and natural
+creases. Do not generate a new hand and do not crop it.
 
-Transform ONLY the visual artwork on the skin into authentic handmade devotional Palm Art.
-Draw the artwork DIRECTLY ON THE REAL SKIN using dense BLUE/INDIGO BALLPOINT PEN.
-Cover the palm and all five fingers with continuous intricate fine pen linework following
-the natural skin creases and finger contours. Use thousands of thin imperfect pen strokes,
-cross-hatching, hatching, stippling and miniature hand-drawn details.
+REMOVE ALL EXISTING DRAWING/ARTWORK/SCENERY/TEXT FROM THE SKIN and restore the palm and
+fingers to natural realistic skin texture. The result must be a clean, blank, photorealistic
+human palm with no artwork, no mountains, no temples, no deity, no writing, no symbols,
+no tattoo, no henna and no marks. Keep the surrounding light background and the complete
+hand visible from wrist through every fingertip. Do not alter hand anatomy.
+"""
+    _step1x_edit(api_key, REFERENCE, clean_prompt, clean)
+    _normalize_palm_image(clean)
+
+    final_prompt = f"""
+Use the supplied CLEAN REAL HUMAN HAND PHOTO as the exact source and preserve that same hand.
+Do NOT generate or replace the hand. Preserve wrist, palm shape, thumb, all five fingers,
+fingernails, skin pores, fingerprints and natural skin creases. Keep the COMPLETE hand visible.
+
+Now draw an authentic HAND-DRAWN DEVOTIONAL PALM ART directly on the natural skin using
+dense BLUE/INDIGO BALLPOINT PEN. This is a physical pen drawing on skin, not a tattoo,
+sticker, decal, printed glove or digital overlay.
+
+CRITICAL MAIN SUBJECT:
+Create a LARGE, unmistakable, recognizable DRAWN IMAGE OF LORD SHIVA / MAHADEV in the
+EXACT CENTER OF THE PALM. The viewer must immediately see Shiva's actual figure, not merely
+a symbol. Draw a recognizable Shiva face with calm eyes, third eye, long matted jata,
+crescent moon, neck ornament/snake, shoulders and torso, in a classic seated meditative
+pose. Include a clearly drawn trishul beside him. Shiva should occupy about 35-45% of the
+palm and be the dominant visual element.
+
+Around the central Shiva figure, create a smaller connected miniature devotional world:
+Kedarnath/Tungnath-style temple, tiny lamps, flowers, river/ghat, distant mountains,
+trees and tiny pilgrims. These are SUPPORTING details only. Do NOT make the mountain,
+temple, river, Om symbol or trishul alone the main subject.
+
+Use thousands of fine imperfect blue ballpoint strokes, cross-hatching, hatching and
+stippled details that follow the skin creases and contours. Preserve realistic skin
+texture underneath the ink. Make it look like a real macro photograph of an artist drawing
+this Shiva scene directly on the hand.
+
+ABSOLUTELY NO readable text anywhere: no Hindi, no English, no letters, no numbers, no
+names, no signature, no handwriting, no captions, no labels, no signs, no banners,
+no watermark-like writing. Temple signs must be blank/illegible.
+
+Avoid tattoo, henna, mehndi, decal, sticker, printed glove, CGI, vector art, marker,
+paint, watercolor, multicolored ink, malformed fingers, extra fingers, missing fingers,
+cropped wrist, cropped fingertips, duplicate hand, or landscape-only composition.
 
 MAIN SUBJECT: {prompt}
-The Hindu devotional figure must be clearly recognizable and LARGE in the CENTER of the
-palm. Around it create one dense connected miniature devotional world: temples, lamps,
-flowers, rivers/ghats, mountains, trees, pilgrims and sacred details appropriate to the
-subject. The central deity must be the visual focus, not a generic landscape.
-
-Make it look like a REAL MACRO PHOTOGRAPH of an artist drawing on actual skin:
-photorealistic skin texture, natural nails, realistic shadows, clean light background,
-crisp blue ballpoint lines, studio lighting, and 2-3 real blue/black ballpoint pens beside
-the wrist.
-
-ABSOLUTELY AVOID tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay,
-CGI, vector art, marker, paint, watercolor, sparse symbols, blank fingers, mountain-only
-composition, malformed hand, fused fingers, extra fingers, missing fingers, cropped wrist,
-cropped fingertips, duplicate hand, watermark, logo, ANY text, lettering, signature, handwriting, name, caption, signboard, typography or multicolored ink.
-
-The output must look physically drawn on real skin, not pasted over the hand. Do not write any person name or signature anywhere on the hand or wrist. ZERO readable text anywhere in the image: no Hindi words, no English words, no letters, no numbers, no names, no captions, no labels, no signs, no banners, no signatures, no watermark-like writing. Any temple signage must be blank and illegible.
 """
-
-    last_error = None
-    for attempt in range(3):
-        try:
-            with REFERENCE.open("rb") as fh:
-                response = requests.post(
-                    endpoint,
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    files={"image": ("palm_reference.jpg", fh, "image/jpeg")},
-                    data={
-                        "model": "step1x-edit",
-                        "prompt": editing_prompt,
-                        "operation": "edit",
-                    },
-                    timeout=300,
-                )
-            if not response.ok:
-                raise RuntimeError(
-                    f"Free.ai Step1X-Edit failed ({response.status_code}): {response.text[:3000]}"
-                )
-
-            data = response.json()
-            image_url = (
-                data.get("output_url")
-                or data.get("image_url")
-                or data.get("url")
-                or data.get("data", {}).get("output_url")
-                or data.get("data", {}).get("image_url")
-            )
-            if not image_url:
-                raise RuntimeError(f"Free.ai returned no image URL: {str(data)[:4000]}")
-
-            img = requests.get(image_url, timeout=300)
-            img.raise_for_status()
-            output.write_bytes(img.content)
-
-            if output.stat().st_size < 10000:
-                raise RuntimeError("Free.ai returned an unexpectedly small image.")
-
-            with Image.open(output) as im:
-                im = ImageOps.exif_transpose(im).convert("RGB")
-                target_w, target_h = 864, 1536
-                im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
-                canvas = Image.new("RGB", (target_w, target_h), "white")
-                left = (target_w - im.width) // 2
-                top = (target_h - im.height) // 2
-                canvas.paste(im, (left, top))
-                canvas.save(output, format="PNG")
-
-            print("Image generated with Free.ai Step1X-Edit v1p2.")
-            return
-        except Exception as exc:
-            last_error = str(exc)
-            print(f"Step1X-Edit attempt {attempt + 1}/3 failed: {last_error}")
-            if attempt < 2:
-                time.sleep(min(10 * (attempt + 1), 30))
-
-    raise RuntimeError(f"Step1X-Edit generation failed: {last_error}")
+    _step1x_edit(api_key, clean, final_prompt, output)
+    _normalize_palm_image(output)
+    print("Step1X two-pass image generated: clean-hand stage + Mahadev drawing stage.")
 
 def make_fallback_devotional_music(category: str) -> Path:
     output = WORK / f"fallback_{category}.mp3"
