@@ -1,6 +1,8 @@
-name: Bhakti Palm Art Automation
+name: OmniGen2 Palm Art TEST
 
 on:
+  push:
+    branches: [omnigen2-hf-test]
   workflow_dispatch:
     inputs:
       test_only:
@@ -8,13 +10,9 @@ on:
         required: false
         default: true
         type: boolean
-  schedule:
-    - cron: '30 5 * * *'
-    - cron: '30 8 * * *'
-    - cron: '30 11 * * *'
 
 jobs:
-  generate-and-post:
+  test-omnigen2:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,26 +29,18 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run automation
+      - name: Run OmniGen2 TEST_ONLY
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
-          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          TEST_ONLY: ${{ inputs.test_only || false }}
+          TEST_ONLY: 'true'
         run: python main.py
 
-      - name: Upload test media
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true }}
+      - name: Upload OmniGen2 test media
         uses: actions/upload-artifact@v4
         with:
-          name: bhakti-palm-art-test
+          name: omnigen2-palm-art-test
           path: |
             work/palm_art.png
             work/wan2_video.mp4
