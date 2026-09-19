@@ -104,7 +104,7 @@ def _first_local_file(value):
     return None
 
 def generate_reference_guided_image(prompt: str, output: Path):
-    import base64, json
+    import base64, json, io
     from gradio_client import Client, handle_file
 
     try:
