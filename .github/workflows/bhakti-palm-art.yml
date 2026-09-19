@@ -1,6 +1,8 @@
 name: Bhakti Palm Art Automation
 
 on:
+  push:
+    branches: [qwen-image-2-test]
   workflow_dispatch:
     inputs:
       test_only:
