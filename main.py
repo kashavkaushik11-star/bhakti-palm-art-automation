@@ -122,30 +122,44 @@ hand geometry, complete wrist-to-fingertips framing and natural skin texture, bu
 redesign the artwork completely.
 
 CRITICAL RESULT:
-One complete real human hand, palm facing camera, all five fingers and thumb fully
-visible and naturally separated. The hand is the hero subject. Cover nearly all
-visible skin with dense continuous blue/indigo ballpoint-pen artwork: fine hatching,
-cross-hatching, stippling, contour lines and thousands of imperfect handmade pen strokes
-following real palm creases.
+One complete real adult human hand, palm facing camera, all five fingers and thumb
+fully visible, naturally separated, and fully inside the rectangular 9:16 frame.
+The hand itself is the hero subject and should fill most of the vertical frame from
+wrist to fingertips. Do NOT put the hand inside a circular plate, disk, frame, card,
+paper sheet, notebook, border, vignette, or decorative container.
 
-Put the requested Hindu devotional figure clearly and recognizably in the CENTER of
-the palm. Surround it with a dense miniature devotional world connected by fine
-hand-drawn pen lines: temples, lamps, flowers, river, trees, mountains, pilgrims and
-other subject-specific details. The devotional scene must dominate the palm rather
-than becoming a generic mountain landscape.
+Cover nearly all visible skin with dense continuous blue/indigo ballpoint-pen artwork:
+fine hatching, cross-hatching, stippling, contour lines and thousands of imperfect
+handmade pen strokes following real palm creases. The artwork should look physically
+drawn directly on real skin, not digitally placed on top.
 
-Keep real skin pores, fingerprints, wrinkles and natural nails visible between ink
-strokes. Keep a clean light/white background and 2-3 real blue/black ballpoint pens
-beside the wrist.
+Put the requested Hindu devotional figure LARGE, clearly recognizable, anatomically
+coherent, and visually dominant in the CENTER of the palm. It must be the main focal
+point, not a tiny figure hidden inside a landscape. Surround it with a dense miniature
+devotional world connected by fine hand-drawn pen lines: temples, lamps, flowers,
+river, trees, mountains, pilgrims and other subject-specific details. Use the
+surrounding scenery to support the deity, never to replace it with a generic
+mountain landscape.
+
+Make the five fingers individually detailed with devotional line-art that remains
+secondary to the central figure. Keep real skin pores, fingerprints, wrinkles and
+natural nails visible between ink strokes. Keep a clean seamless white/light-gray
+background with only 2-3 real blue/black ballpoint pens naturally placed beside the
+wrist.
 
 Photorealistic macro editorial photograph, sharp handmade ink detail, natural skin
-texture, realistic shadows.
+texture, realistic shadows, realistic skin color with blue ink only.
+
+ABSOLUTELY NO readable writing anywhere in the image. No names, signatures, labels,
+captions, words, letters, numbers, arrows, signs, logos, watermarks, calligraphy,
+brand marks, notebook text, or decorative text. Do not invent a signature on the wrist
+or palm.
 
 DO NOT create tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay,
 CGI, vector art, paint, watercolor, marker, solid blue patches, sparse symbols,
 blank fingers, mountain-only artwork, generic landscape-only artwork, extra fingers,
-fused fingers, malformed hands, cropped fingertips, duplicate hands, watermark,
-logo, large readable text, or multicolored ink.
+fused fingers, malformed hands, cropped fingertips, duplicate hands, circular plates,
+frames, borders, paper props, notebooks, or multicolored ink.
 
 Invent completely new devotional artwork and do not copy the exact deity drawing or
 composition from the reference.
