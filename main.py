@@ -259,7 +259,7 @@ def youtube_upload(video: Path, title: str, description: str):
 
 def main():
     test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
+    required = ["FREEAI_API_KEY"]
     if not test_only:
         required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
     missing = [x for x in required if not os.getenv(x)]
