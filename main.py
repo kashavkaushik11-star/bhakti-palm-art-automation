@@ -179,26 +179,46 @@ def generate_reference_guided_image(prompt: str, output: Path):
     # Cloudflare's live model limit.
     compact_style = " ".join(style_text.split())[:400]
     compact_subject = " ".join(prompt.split())[:500]
-    generation_prompt = f"""Create a completely NEW vertical 9:16 photograph of authentic handmade Palm-Art.
+    generation_prompt = f"""Create a completely NEW photorealistic vertical devotional Palm-Art photograph.
 
 STYLE: {compact_style}
 SUBJECT: {compact_subject}
 
-Real adult human hand, palm-up on clean white paper, exactly five natural fingers.
-Make the palm and every finger look covered almost completely by extremely dense handmade
-BLUE/INDIGO BALLPOINT-PEN drawing. Authentic hand-drawn medium: thousands of very thin,
-imperfect pen strokes, fine hatching, cross-hatching, stippling, contour lines and tiny
-sketch marks following natural palm creases and finger contours. Fill the skin with continuous
-intricate blue pen linework, not isolated symbols. Integrate many tiny devotional scenes,
-temples, landscapes, pilgrims and story elements related to the subject, all small and connected.
-Real skin pores, creases and nails. 2-3 real blue/black ballpoint pens beside the hand.
-Photorealistic premium macro editorial photograph, sharp ink detail, natural lighting.
+CRITICAL COMPOSITION:
+A real adult human hand is held palm-up, centered and fully visible from wrist to fingertips.
+Show the COMPLETE hand: thumb plus four fingers, natural anatomy, five fingers total, no cropped
+fingertips, no missing thumb, no extra fingers. The entire palm is the canvas.
+The devotional artwork must be the MAIN SUBJECT of the palm, not just a landscape.
+Create a recognizable sacred figure or devotional scene in the CENTER of the palm, chosen from
+the requested subject: Krishna playing flute, Radha-Krishna, Shiva/Mahadev, Hanuman, Ram-Sita,
+Durga, Ganesh or another clearly recognizable Hindu devotional subject. Surround the main figure
+with a dense miniature devotional world: temple, lamps, flowers, river, mountains, trees,
+pilgrims and sacred symbols appropriate to the requested subject.
 
-Create NEW artwork. Do not copy the reference subject, landmark, text, signature, exact objects
-or exact composition. NO tattoo, henna, mehndi, sticker, decal, printed glove, digital overlay,
-CGI, vector art, thick marker, solid blue shapes, sparse symbols, blank fingers, extra fingers,
-malformed fingers, colored ink, watermark or large readable text. It must look like a real photograph
-of painstakingly handwritten blue ballpoint Palm Art."""
+AUTHENTIC PEN-ART:
+The artwork is painstakingly hand-drawn directly on real human skin using BLUE/INDIGO BALLPOINT PEN.
+Cover almost the entire palm and fingers with continuous dense fine pen linework. Use thousands of
+thin imperfect handwritten strokes, contour lines, cross-hatching, hatching, stippling and tiny
+sketch marks that follow the natural palm creases and finger contours. The linework must remain
+clearly visible and handmade. Keep skin pores, wrinkles, fingerprints and natural nails visible
+between the ink strokes. The ink must look physically drawn onto the skin, not printed.
+
+PHOTOGRAPH:
+Premium realistic macro photograph, clean white background, soft natural studio lighting,
+sharp focus on the hand and ink, realistic skin texture, subtle shadows, editorial photography.
+Place 2-3 real blue/black ballpoint pens beside the wrist as physical drawing tools.
+
+STRICTLY AVOID:
+tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector art,
+thick marker, paint, watercolor, sparse symbols, isolated blue patches, blank fingers,
+generic mountain-only landscape, landscape-only composition, unreadable blobs, extra fingers,
+malformed fingers, fused fingers, cropped hand, cropped fingertips, duplicate hand, watermark,
+logo, large readable text, colored ink.
+
+The result must look like a REAL PHOTOGRAPH of an artist who painstakingly drew an intricate
+Hindu devotional scene directly across a real palm with a blue ballpoint pen. Keep the entire
+hand visible and make the devotional figure clearly recognizable."""
+
 
     flux_url = (
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
@@ -240,23 +260,18 @@ of painstakingly handwritten blue ballpoint Palm Art."""
 
             with Image.open(output) as im:
                 im = ImageOps.exif_transpose(im)
-                # Flux Schnell currently returns a landscape image. Center-crop
-                # into the required portrait canvas without distorting the hand.
+                # Preserve the COMPLETE hand. Fit the generated image inside a 9:16 white canvas
+                # instead of center-cropping, which can cut off the thumb/fingertips.
                 target_w, target_h = 864, 1536
-                target_ratio = target_w / target_h
-                src_ratio = im.width / im.height
-                if src_ratio > target_ratio:
-                    crop_w = int(im.height * target_ratio)
-                    left = (im.width - crop_w) // 2
-                    im = im.crop((left, 0, left + crop_w, im.height))
-                elif src_ratio < target_ratio:
-                    crop_h = int(im.width / target_ratio)
-                    top = (im.height - crop_h) // 2
-                    im = im.crop((0, top, im.width, top + crop_h))
-                im = im.resize((target_w, target_h), Image.Resampling.LANCZOS)
-                if im.mode not in ("RGB", "RGBA"):
-                    im = im.convert("RGB")
-                im.save(output, format="PNG")
+                im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+                canvas = Image.new("RGB", (target_w, target_h), "white")
+                left = (target_w - im.width) // 2
+                top = (target_h - im.height) // 2
+                if im.mode in ("RGBA", "LA"):
+                    canvas.paste(im.convert("RGBA"), (left, top), im.convert("RGBA"))
+                else:
+                    canvas.paste(im.convert("RGB"), (left, top))
+                canvas.save(output, format="PNG")
 
             print("Image generated with Cloudflare LLaVA style analysis + Flux.1 Schnell.")
             return
@@ -378,7 +393,26 @@ def main():
     # Only the new topic/scene is sent to the image generator. The reference image
     # is analyzed separately for STYLE ONLY, keeping the Flux prompt safely below
     # Cloudflare's 2048-character live limit.
-    image_prompt = f"{topic}. {scene}"
+    deity_en = {
+        "कृष्ण": "Lord Krishna playing flute",
+        "राधा-कृष्ण": "Radha and Lord Krishna together",
+        "शिव": "Lord Shiva / Mahadev",
+        "हनुमान": "Lord Hanuman",
+        "राम": "Lord Rama with Sita",
+        "माता": "Goddess Vaishno Devi",
+        "गंगा": "Goddess Ganga",
+        "जगन्नाथ": "Lord Jagannath",
+        "विष्णु": "Lord Vishnu",
+        "दुर्गा": "Goddess Durga",
+        "गणेश": "Lord Ganesha",
+        "श्याम": "Khatu Shyam",
+    }.get(deity, deity)
+    image_prompt = (
+        f"Devotional Palm Art featuring {deity_en}. "
+        f"Create the main sacred figure clearly in the center of the palm, surrounded by "
+        f"tiny connected devotional scenes inspired by {scene}. "
+        f"The complete real hand must remain visible from wrist through all five fingertips."
+    )
     motion_prompt = f"""
 Animate this Palm-Art illustration as a premium devotional cinematic short about {topic}.
 Preserve the exact hand, finger geometry, blue-ink artwork and composition of the generated image.
