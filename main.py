@@ -1,7 +1,6 @@
 import json
 import os
 import random
-import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -20,26 +19,12 @@ REFERENCE = ROOT / "palm_reference.jpg.jpg"
 WORK.mkdir(exist_ok=True)
 
 TOPICS = [
-    ("श्री कृष्ण — वृंदावन", "कृष्ण", "कृष्ण भक्ति", "krishna", "वृंदावन, यमुना घाट, गोवर्धन पर्वत, छोटी-छोटी कृष्ण मंदिरों की झलक, गायें, भक्त"),
-    ("महादेव — तुंगनाथ", "शिव", "शिव भक्ति", "shiv", "तुंगनाथ मंदिर, हिमालय, बर्फीली चोटियाँ, पत्थर की सीढ़ियाँ, पहाड़ी झरना, तीर्थयात्री"),
-    ("श्री हनुमान", "हनुमान", "हनुमान भक्ति", "hanuman", "हनुमान मंदिर, पर्वतीय वन, रामसेतु की प्रतीकात्मक झलक, भक्त और दीपक"),
-    ("श्री राम — अयोध्या", "राम", "राम भक्ति", "ram", "अयोध्या, सरयू घाट, मंदिर, दीपों की पंक्तियाँ, रामायण से जुड़े छोटे दृश्य"),
-    ("माँ वैष्णो देवी", "माता", "माता भक्ति", "mata", "वैष्णो देवी यात्रा मार्ग, पहाड़, सीढ़ियाँ, गुफा मंदिर, लाल ध्वज और भक्त"),
-    ("केदारनाथ", "शिव", "केदारनाथ भक्ति", "shiv", "केदारनाथ मंदिर, हिमालय, मंदाकिनी, बर्फीली चोटियाँ, तीर्थयात्री"),
-    ("काशी विश्वनाथ", "शिव", "काशी भक्ति", "shiv", "काशी विश्वनाथ मंदिर, गंगा घाट, नावें, दीपदान और संकरी प्राचीन गलियाँ"),
-    ("जगन्नाथ पुरी", "जगन्नाथ", "जगन्नाथ भक्ति", "krishna", "जगन्नाथ मंदिर, रथ, समुद्र तट, भक्तों की यात्रा और मंदिर ध्वज"),
-    ("सोमनाथ", "शिव", "सोमनाथ भक्ति", "shiv", "सोमनाथ मंदिर, अरब सागर, सूर्यास्त, तट और मंदिर की वास्तुकला"),
-    ("बद्रीनाथ", "विष्णु", "बद्रीनाथ भक्ति", "krishna", "बद्रीनाथ मंदिर, अलकनंदा, हिमालय, तप्त कुंड और तीर्थयात्री"),
-    ("रामायण — वनवास", "राम", "रामायण", "ram", "वन मार्ग, कुटिया, नदी, वन्यजीवन और श्री राम-सीता-लक्ष्मण की सूक्ष्म कथात्मक झलक"),
-    ("महाभारत — कुरुक्षेत्र", "कृष्ण", "महाभारत", "krishna", "कुरुक्षेत्र, रथ, गीता उपदेश की प्रतीकात्मक झलक, युद्धभूमि और दूर खड़े योद्धा"),
-    ("भगवद्गीता — श्री कृष्ण", "कृष्ण", "गीता ज्ञान", "krishna", "कुरुक्षेत्र का रथ, श्री कृष्ण और अर्जुन की सूक्ष्म दृश्यात्मक झलक, दिव्य प्रकाश"),
-    ("गंगा आरती — हरिद्वार", "गंगा", "गंगा भक्ति", "mata", "हर की पौड़ी, गंगा आरती, दीप, घाट, भक्त और बहती गंगा"),
-    ("नटराज — शिव तांडव", "शिव", "शिव तांडव", "shiv", "नटराज की दिव्य मुद्रा, कैलाश, डमरू, त्रिशूल, पर्वत और ऊर्जा की लहरें"),
-    ("राधा-कृष्ण प्रेम", "राधा-कृष्ण", "राधा कृष्ण भक्ति", "krishna", "वृंदावन की गलियाँ, कुंज, यमुना, बांसुरी, मोर और राधा-कृष्ण की सूक्ष्म झलक"),
-    ("गणेश जी", "गणेश", "गणेश भक्ति", "mata", "गणेश मंदिर, मोदक, दीप, पुष्प, छोटे भक्त और उत्सव का वातावरण"),
-    ("नवरात्रि — माँ दुर्गा", "दुर्गा", "दुर्गा भक्ति", "mata", "माँ दुर्गा का मंदिर, सिंह, त्रिशूल, दीप, पुष्प और पर्वतीय मंदिर परिसर"),
-    ("श्री श्याम बाबा", "श्याम", "श्याम भक्ति", "krishna", "खाटू श्याम मंदिर, ध्वज, भक्तों की यात्रा, पुष्प और मंदिर प्रांगण"),
-    ("चार धाम यात्रा", "विष्णु", "चार धाम", "krishna", "हिमालयी तीर्थ मार्ग, मंदिर, नदियाँ, पर्वत, पुल और तीर्थयात्रियों की यात्रा"),
+    ("श्री कृष्ण — वृंदावन", "कृष्ण", "कृष्ण भक्ति", "krishna"),
+    ("महादेव — तुंगनाथ", "शिव", "शिव भक्ति", "shiv"),
+    ("श्री हनुमान", "हनुमान", "हनुमान भक्ति", "hanuman"),
+    ("श्री राम — अयोध्या", "राम", "राम भक्ति", "ram"),
+    ("माँ वैष्णो देवी", "माता", "माता भक्ति", "mata"),
+    ("केदारनाथ", "शिव", "केदारनाथ भक्ति", "shiv"),
 ]
 
 def choose_topic():
@@ -47,398 +32,279 @@ def choose_topic():
         now = datetime.now(timezone.utc)
         slot_map = {5: 0, 8: 1, 11: 2}
         slot = slot_map.get(now.hour, now.hour % 3)
-        index = (now.date().toordinal() * 3 + slot) % len(TOPICS)
-        return TOPICS[index]
+        return TOPICS[(now.date().toordinal() * 3 + slot) % len(TOPICS)]
     return random.choice(TOPICS)
-
-def gemini_text(prompt: str) -> str:
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY not configured; using local caption fallback.")
-    models = ["gemini-3.1-flash-lite", "gemini-3-flash-preview"]
-    last_error = None
-    for model in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-        payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.7, "maxOutputTokens": 500}}
-        for attempt in range(3):
-            try:
-                r = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=120)
-                if r.ok:
-                    data = r.json()
-                    text = "".join(p.get("text", "") for p in data.get("candidates", [{}])[0].get("content", {}).get("parts", []))
-                    if text.strip():
-                        return text.strip()
-                else:
-                    last_error = r.text
-                    if r.status_code not in (429, 500, 502, 503, 504):
-                        break
-            except Exception as exc:
-                last_error = str(exc)
-            time.sleep(min(5 * (attempt + 1), 15))
-    raise RuntimeError(f"Gemini text generation failed: {last_error}")
-
-def _first_local_file(value):
-    if value is None:
-        return None
-    if isinstance(value, (str, Path)):
-        p = Path(str(value))
-        return p if p.exists() else None
-    if isinstance(value, dict):
-        # Gradio video outputs may be returned as {"video": "/tmp/...mp4"}
-        # while image outputs may use {"path": "..."}.
-        for key in ("path", "video", "file", "url"):
-            if key in value and value[key]:
-                p = Path(str(value[key]))
-                if p.exists():
-                    return p
-        # Some APIs nest the actual file inside a result object.
-        for item in value.values():
-            found = _first_local_file(item)
-            if found:
-                return found
-    if isinstance(value, (list, tuple)):
-        for item in value:
-            found = _first_local_file(item)
-            if found:
-                return found
-    return None
-
-def generate_reference_guided_image(prompt: str, output: Path):
-    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
-    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
-    if not account_id or not token:
-        raise RuntimeError("Missing GitHub Secrets: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN")
-
-    import base64
-
-    # Cloudflare's currently documented SDXL/Lightning endpoints expose the
-    # img2img fields in the schema, but the live backend can reject the image
-    # tensor with ERROR 3030. We therefore use a reliable two-stage pipeline:
-    # 1) LLaVA reads the reference and extracts STYLE ONLY.
-    # 2) Flux.1 Schnell generates a completely new image from that style blueprint.
-    # This keeps the reference influential without depending on the broken
-    # img2img backend path.
-    reference_bytes = REFERENCE.read_bytes()
-
-    vision_url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/llava-hf/llava-1.5-7b-hf"
-    )
-    vision_payload = {
-        "image": list(reference_bytes),
-        "prompt": (
-            "Analyze this reference image ONLY for its visual STYLE and medium. "
-            "Do not describe or preserve its specific religious subject, landmark, "
-            "written names, exact composition, or exact objects. Return a concise "
-            "style blueprint covering: real hand photography, palm/finger treatment, "
-            "blue ballpoint pen technique, density of linework, hatching, stippling, "
-            "paper/background, camera/macro look, lighting and realism. "
-            "This blueprint will be used to create a completely NEW devotional artwork."
-        ),
-        "max_tokens": 400,
-    }
-
-    style_text = ""
-    for attempt in range(3):
-        try:
-            vr = requests.post(
-                vision_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                json=vision_payload,
-                timeout=180,
-            )
-            if vr.ok:
-                vd = vr.json()
-                result = vd.get("result", vd)
-                if isinstance(result, dict):
-                    style_text = result.get("description") or result.get("response") or result.get("text") or ""
-                elif isinstance(result, str):
-                    style_text = result
-                if style_text.strip():
-                    break
-            else:
-                print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {vr.text[:1200]}")
-        except Exception as exc:
-            print(f"Cloudflare reference analysis attempt {attempt + 1}/3 failed: {exc}")
-        if attempt < 2:
-            time.sleep(min(5 * (attempt + 1), 15))
-
-    if not style_text.strip():
-        style_text = (
-            "Photorealistic macro photograph of a real palm-up human hand on clean white paper; "
-            "dense handmade blue and indigo ballpoint-pen artwork covering the palm and all five fingers; "
-            "fine cross-hatching, hatching and stippling; intricate miniature storytelling; realistic skin pores, "
-            "creases and natural nails; a few real ballpoint pens beside the hand; sharp ink detail; natural editorial lighting."
-        )
-
-    # FLUX.1 Schnell accepts prompts up to 2048 characters.
-    # Keep the reference-style summary compact so the request never exceeds
-    # Cloudflare's live model limit.
-    compact_style = " ".join(style_text.split())[:400]
-    compact_subject = " ".join(prompt.split())[:500]
-    generation_prompt = f"""Create a completely NEW photorealistic vertical devotional Palm-Art photograph.
-
-STYLE: {compact_style}
-SUBJECT: {compact_subject}
-
-CRITICAL COMPOSITION:
-A real adult human hand is held palm-up, centered and fully visible from wrist to fingertips.
-Show the COMPLETE hand: thumb plus four fingers, natural anatomy, five fingers total, no cropped
-fingertips, no missing thumb, no extra fingers. The entire palm is the canvas.
-The devotional artwork must be the MAIN SUBJECT of the palm, not just a landscape.
-Create a recognizable sacred figure or devotional scene in the CENTER of the palm, chosen from
-the requested subject: Krishna playing flute, Radha-Krishna, Shiva/Mahadev, Hanuman, Ram-Sita,
-Durga, Ganesh or another clearly recognizable Hindu devotional subject. Surround the main figure
-with a dense miniature devotional world: temple, lamps, flowers, river, mountains, trees,
-pilgrims and sacred symbols appropriate to the requested subject.
-
-AUTHENTIC PEN-ART:
-The artwork is painstakingly hand-drawn directly on real human skin using BLUE/INDIGO BALLPOINT PEN.
-Cover almost the entire palm and fingers with continuous dense fine pen linework. Use thousands of
-thin imperfect handwritten strokes, contour lines, cross-hatching, hatching, stippling and tiny
-sketch marks that follow the natural palm creases and finger contours. The linework must remain
-clearly visible and handmade. Keep skin pores, wrinkles, fingerprints and natural nails visible
-between the ink strokes. The ink must look physically drawn onto the skin, not printed.
-
-PHOTOGRAPH:
-Premium realistic macro photograph, clean white background, soft natural studio lighting,
-sharp focus on the hand and ink, realistic skin texture, subtle shadows, editorial photography.
-Place 2-3 real blue/black ballpoint pens beside the wrist as physical drawing tools.
-
-STRICTLY AVOID:
-tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay, CGI, vector art,
-thick marker, paint, watercolor, sparse symbols, isolated blue patches, blank fingers,
-generic mountain-only landscape, landscape-only composition, unreadable blobs, extra fingers,
-malformed fingers, fused fingers, cropped hand, cropped fingertips, duplicate hand, watermark,
-logo, large readable text, colored ink.
-
-The result must look like a REAL PHOTOGRAPH of an artist who painstakingly drew an intricate
-Hindu devotional scene directly across a real palm with a blue ballpoint pen. Keep the entire
-hand visible and make the devotional figure clearly recognizable."""
-
-
-    flux_url = (
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}"
-        "/ai/run/@cf/black-forest-labs/flux-1-schnell"
-    )
-    # The live Flux.1 Schnell endpoint rejects the optional /seed field.
-    # Keep the payload limited to fields accepted by the current API.
-    flux_payload = {
-        "prompt": generation_prompt,
-        "steps": 8,
-    }
-
-    last_error = None
-    for attempt in range(3):
-        try:
-            r = requests.post(
-                flux_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                json=flux_payload,
-                timeout=300,
-            )
-            if not r.ok:
-                raise RuntimeError(
-                    f"Cloudflare Flux image generation failed ({r.status_code}): {r.text[:2500]}"
-                )
-
-            data = r.json()
-            result = data.get("result", data)
-            image_b64 = result.get("image") if isinstance(result, dict) else None
-            if not image_b64:
-                raise RuntimeError(f"Cloudflare Flux returned no image: {str(data)[:2500]}")
-
-            output.write_bytes(base64.b64decode(image_b64))
-            if output.stat().st_size < 10000:
-                raise RuntimeError("Cloudflare Flux returned an unexpectedly small image file.")
-
-            with Image.open(output) as im:
-                im = ImageOps.exif_transpose(im)
-                # Preserve the COMPLETE hand. Fit the generated image inside a 9:16 white canvas
-                # instead of center-cropping, which can cut off the thumb/fingertips.
-                target_w, target_h = 864, 1536
-                im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
-                canvas = Image.new("RGB", (target_w, target_h), "white")
-                left = (target_w - im.width) // 2
-                top = (target_h - im.height) // 2
-                if im.mode in ("RGBA", "LA"):
-                    canvas.paste(im.convert("RGBA"), (left, top), im.convert("RGBA"))
-                else:
-                    canvas.paste(im.convert("RGB"), (left, top))
-                canvas.save(output, format="PNG")
-
-            print("Image generated with Cloudflare LLaVA style analysis + Flux.1 Schnell.")
-            return
-        except Exception as exc:
-            last_error = str(exc)
-            print(f"Cloudflare Flux image attempt {attempt + 1}/3 failed: {last_error}")
-            if attempt < 2:
-                time.sleep(min(10 * (attempt + 1), 30))
-
-    raise RuntimeError(f"Cloudflare image generation failed: {last_error}")
-
-def make_fallback_devotional_music(category: str) -> Path:
-    output = WORK / f"fallback_{category}.mp3"
-    if output.exists() and output.stat().st_size > 0:
-        return output
-    filter_complex = "sine=frequency=196:duration=10[a];sine=frequency=293.66:duration=10[b];sine=frequency=392:duration=10[c];[a][b][c]amix=inputs=3:duration=longest:weights=0.48 0.28 0.16,volume=0.55,afade=t=in:st=0:d=0.8,afade=t=out:st=8.8:d=1.2"
-    cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", filter_complex, "-t", "10", "-c:a", "libmp3lame", "-b:a", "128k", str(output)]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    return output
 
 def choose_music(category: str) -> Path:
     files = list(MUSIC.glob("*.mp3")) + list(MUSIC.glob("*.wav")) + list(MUSIC.glob("*.m4a"))
     if files:
         matches = [p for p in files if category.lower() in p.stem.lower()]
         return random.choice(matches or files)
-    print("No music file found in music/. Using generated devotional instrumental fallback.")
-    return make_fallback_devotional_music(category)
+    output = WORK / f"fallback_{category}.mp3"
+    if output.exists() and output.stat().st_size > 0:
+        return output
+    cmd = [
+        "ffmpeg", "-y", "-f", "lavfi",
+        "-i",
+        "sine=frequency=196:duration=10[a];sine=frequency=293.66:duration=10[b];"
+        "sine=frequency=392:duration=10[c];[a][b][c]amix=inputs=3:duration=longest,"
+        "volume=0.55,afade=t=in:st=0:d=0.8,afade=t=out:st=8.8:d=1.2",
+        "-t", "10", "-c:a", "libmp3lame", "-b:a", "128k", str(output)
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    return output
 
-def generate_wan_video(image: Path, prompt: str, output: Path):
-    # Reliable no-quota AI-video fallback: create a cinematic 9:16 motion reel
-    # directly from the generated Palm-Art image. This avoids ZeroGPU/Space
-    # availability and still produces a moving short suitable for Reels.
-    last_error = None
-    for attempt in range(2):
+def generate_reference_guided_image(output: Path):
+    api_key = os.environ.get("FREEAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("Missing GitHub Secret: FREEAI_API_KEY")
+
+    endpoint = "https://api.free.ai/v1/image/edit/"
+
+    prompt = """
+EDIT THIS EXACT REFERENCE PHOTO. Preserve the real adult human hand itself:
+preserve the same palm-up pose, wrist, thumb, all five fingers, fingernails,
+skin pores, fingerprints, natural creases, lighting, camera perspective and
+clean light background. Do NOT generate a new hand and do NOT change the hand
+anatomy.
+
+FIRST, COMPLETELY REMOVE/ERASE ALL EXISTING DRAWING, LANDSCAPE, TEMPLE,
+MOUNTAIN, WRITING, SIGNATURE OR OTHER ARTWORK FROM THE SKIN. The final skin
+must contain a NEW artwork only.
+
+THEN DRAW A PREMIUM, DENSE HANDMADE DEVOTIONAL PALM ART DIRECTLY ON THE REAL
+SKIN USING ONLY BLUE/INDIGO BALLPOINT PEN. The artwork must physically follow
+the palm creases and finger contours and must look like thousands of real
+ballpoint strokes: fine hatching, cross-hatching, contour lines, stippling and
+tiny imperfect hand-drawn marks. Keep natural skin texture visible through
+the ink. Cover almost the entire visible palm and fingers with connected
+devotional artwork.
+
+CRITICAL: EXACT CENTER OF THE PALM MUST CONTAIN A LARGE, UNMISTAKABLE,
+HIGHLY RECOGNIZABLE HAND-DRAWN FIGURE OF LORD SHIVA / MAHADEV. This must be
+an actual figure, NOT an Om symbol, NOT a trishul alone, and NOT a mountain.
+Make Shiva's face clearly recognizable, with calm eyes, third eye, long matted
+jata hair, crescent moon, snake around the neck, shoulders and torso, seated
+in meditation. A clearly drawn trishul is beside him. Shiva should occupy
+about 35-45% of the palm and be the dominant central subject.
+
+Around Shiva, add secondary miniature devotional details only: a small
+Himalayan temple, lamps, flowers, river/ghat, distant mountains, trees and
+tiny pilgrims. These supporting details must remain much smaller than Shiva.
+
+PHOTOREALISM IS ESSENTIAL. The result must look like a real macro photograph
+of a real person's hand on which an artist spent hours drawing with a blue
+ballpoint pen.
+
+STRICTLY NO tattoo, henna, mehndi, decal, sticker, printed glove, digital
+overlay, CGI, 3D render, vector art, marker, paint, watercolor, airbrush,
+plastic skin, synthetic hand, blank fingers, extra fingers, missing fingers,
+fused fingers, malformed anatomy, cropped fingertips, cropped wrist.
+
+ABSOLUTELY ZERO READABLE TEXT. No Hindi, English, letters, numbers, names,
+signature, handwriting, captions, labels, signs, banners, watermark or logo.
+Only blue/indigo ballpoint ink. Keep the complete hand visible.
+"""
+
+    with REFERENCE.open("rb") as fh:
+        files = {
+            "image": (
+                REFERENCE.name,
+                fh,
+                "image/jpeg",
+            )
+        }
+        data = {
+            "model": "qwen-image-edit",
+            "prompt": prompt,
+            "operation": "edit",
+        }
+        response = requests.post(
+            endpoint,
+            headers={"Authorization": f"Bearer {api_key}"},
+            files=files,
+            data=data,
+            timeout=600,
+        )
+
+    if not response.ok:
+        raise RuntimeError(
+            f"Free.ai Qwen-Image-Edit 2511 failed ({response.status_code}): "
+            f"{response.text[:4000]}"
+        )
+
+    content_type = response.headers.get("content-type", "")
+    if content_type.startswith("image/"):
+        output.write_bytes(response.content)
+    else:
         try:
-            cmd = [
-                "ffmpeg", "-y", "-loop", "1", "-i", str(image),
-                "-t", "8",
-                "-vf",
-                "scale=2160:3840:force_original_aspect_ratio=increase,"
-                "crop=2160:3840,"
-                "zoompan=z='min(zoom+0.0008,1.08)':"
-                "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                "d=1:s=1080x1920:fps=30,"
-                "eq=contrast=1.03:saturation=1.05",
-                "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-                "-pix_fmt", "yuv420p", str(output),
-            ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-            if output.stat().st_size < 10000:
-                raise RuntimeError("FFmpeg returned an unexpectedly small video file.")
-            print("Video created as a cinematic Palm-Art motion reel with FFmpeg.")
-            return
-        except Exception as exc:
-            last_error = str(exc)
-            print(f"Motion video attempt {attempt + 1}/2 failed: {last_error}")
-            time.sleep(5)
-    raise RuntimeError(f"Motion video generation failed: {last_error}")
+            result = response.json()
+        except Exception:
+            raise RuntimeError(f"Free.ai returned non-image response: {response.text[:4000]}")
 
-def make_video(generated_video: Path, music: Path, output: Path):
+        image_url = (
+            result.get("output_url")
+            or result.get("image_url")
+            or result.get("url")
+            or result.get("share_url")
+            or result.get("data", {}).get("output_url")
+            or result.get("data", {}).get("image_url")
+            or result.get("data", {}).get("url")
+        )
+        if not image_url:
+            raise RuntimeError(f"Free.ai returned no image URL: {str(result)[:5000]}")
+
+        image_response = requests.get(image_url, timeout=600)
+        image_response.raise_for_status()
+        output.write_bytes(image_response.content)
+
+    if output.stat().st_size < 10000:
+        raise RuntimeError("Free.ai returned an unexpectedly small image.")
+
+    with Image.open(output) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        target_w, target_h = 864, 1536
+        im.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGB", (target_w, target_h), "white")
+        canvas.paste(im, ((target_w - im.width) // 2, (target_h - im.height) // 2))
+        canvas.save(output, "PNG")
+
+    print("TEST: Qwen-Image-Edit 2511 via Free.ai completed with the reference hand preserved.")
+
+def generate_motion_video(image: Path, output: Path):
+    cmd = [
+        "ffmpeg", "-y", "-loop", "1", "-i", str(image), "-t", "8",
+        "-vf",
+        "scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,"
+        "zoompan=z='min(zoom+0.0008,1.08)':x='iw/2-(iw/zoom/2)':"
+        "y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
+        "eq=contrast=1.03:saturation=1.05",
+        "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-pix_fmt", "yuv420p", str(output),
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+def make_video(raw_video: Path, music: Path, output: Path):
     vf = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p"
-    cmd = ["ffmpeg", "-y", "-i", str(generated_video), "-i", str(music), "-t", "10", "-vf", vf, "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", str(output)]
+    cmd = [
+        "ffmpeg", "-y", "-i", str(raw_video), "-i", str(music), "-t", "10",
+        "-vf", vf, "-r", "30", "-c:v", "libx264", "-preset", "veryfast",
+        "-crf", "19", "-c:a", "aac", "-b:a", "160k", "-shortest",
+        "-movflags", "+faststart", str(output)
+    ]
     subprocess.run(cmd, check=True)
 
 def facebook_reel(video: Path, title: str, description: str):
     page = os.environ["FACEBOOK_PAGE_ID"].strip()
     token = os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"].strip()
     version = os.getenv("FACEBOOK_GRAPH_VERSION", "v26.0")
-    if token.startswith("OAuth "):
-        token = token[6:].strip()
-    verify = requests.get(f"https://graph.facebook.com/{version}/{page}", params={"fields": "id,name", "access_token": token}, timeout=60)
+    verify = requests.get(
+        f"https://graph.facebook.com/{version}/{page}",
+        params={"fields": "id,name", "access_token": token}, timeout=60
+    )
     if not verify.ok:
-        raise RuntimeError(f"Facebook Page token/Page ID check failed ({verify.status_code}): {verify.text[:1200]}")
-    start = requests.post(f"https://graph.facebook.com/{version}/{page}/video_reels", data={"upload_phase": "start", "access_token": token}, timeout=60)
+        raise RuntimeError(f"Facebook Page token/Page ID check failed: {verify.text[:1200]}")
+    start = requests.post(
+        f"https://graph.facebook.com/{version}/{page}/video_reels",
+        data={"upload_phase": "start", "access_token": token}, timeout=60
+    )
     if not start.ok:
-        raise RuntimeError(f"Facebook Reel start failed ({start.status_code}): {start.text[:2000]}")
+        raise RuntimeError(f"Facebook Reel start failed: {start.text[:2000]}")
     info = start.json()
     video_id = info["video_id"]
     upload_url = info.get("upload_url") or f"https://rupload.facebook.com/video-upload/{version}/{video_id}"
-    size = video.stat().st_size
     with video.open("rb") as fh:
-        upload = requests.post(upload_url, headers={"Authorization": f"OAuth {token}", "offset": "0", "file_size": str(size), "Content-Type": "application/octet-stream"}, data=fh, timeout=300)
+        upload = requests.post(
+            upload_url,
+            headers={"Authorization": f"OAuth {token}", "offset": "0",
+                     "file_size": str(video.stat().st_size),
+                     "Content-Type": "application/octet-stream"},
+            data=fh, timeout=300
+        )
     if not upload.ok:
-        raise RuntimeError(f"Facebook Reel upload failed ({upload.status_code}): {upload.text[:2000]}")
-    finish = requests.post(f"https://graph.facebook.com/{version}/{page}/video_reels", data={"upload_phase": "finish", "video_id": video_id, "video_state": "PUBLISHED", "title": title, "description": description, "access_token": token}, timeout=60)
+        raise RuntimeError(f"Facebook Reel upload failed: {upload.text[:2000]}")
+    finish = requests.post(
+        f"https://graph.facebook.com/{version}/{page}/video_reels",
+        data={"upload_phase": "finish", "video_id": video_id,
+              "video_state": "PUBLISHED", "title": title,
+              "description": description, "access_token": token}, timeout=60
+    )
     if not finish.ok:
-        raise RuntimeError(f"Facebook Reel publish failed ({finish.status_code}): {finish.text[:2000]}")
+        raise RuntimeError(f"Facebook Reel publish failed: {finish.text[:2000]}")
     return finish.json()
 
 def youtube_upload(video: Path, title: str, description: str):
-    creds = Credentials(None, refresh_token=os.environ["YOUTUBE_REFRESH_TOKEN"], token_uri="https://oauth2.googleapis.com/token", client_id=os.environ["YOUTUBE_CLIENT_ID"], client_secret=os.environ["YOUTUBE_CLIENT_SECRET"], scopes=["https://www.googleapis.com/auth/youtube.upload"])
+    creds = Credentials(
+        None, refresh_token=os.environ["YOUTUBE_REFRESH_TOKEN"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.environ["YOUTUBE_CLIENT_ID"],
+        client_secret=os.environ["YOUTUBE_CLIENT_SECRET"],
+        scopes=["https://www.googleapis.com/auth/youtube.upload"]
+    )
     youtube = build("youtube", "v3", credentials=creds)
-    body = {"snippet": {"title": title, "description": description, "categoryId": "22"}, "status": {"privacyStatus": "public"}}
-    request = youtube.videos().insert(part="snippet,status", body=body, media_body=MediaFileUpload(str(video), mimetype="video/mp4", resumable=True))
+    body = {
+        "snippet": {"title": title, "description": description, "categoryId": "22"},
+        "status": {"privacyStatus": "public"}
+    }
+    request = youtube.videos().insert(
+        part="snippet,status", body=body,
+        media_body=MediaFileUpload(str(video), mimetype="video/mp4", resumable=True)
+    )
     response = None
     while response is None:
         _, response = request.next_chunk()
     return response.get("id")
 
 def main():
-    test_only = os.getenv("TEST_ONLY", "false").lower() == "true"
-    required = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
+    test_only = os.getenv("TEST_ONLY", "true").lower() == "true"
+    required = ["FREEAI_API_KEY"]
     if not test_only:
-        required += ["FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
+        required += [
+            "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN",
+            "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"
+        ]
     missing = [x for x in required if not os.getenv(x)]
     if missing:
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
 
-    topic, deity, category, music_category, scene = choose_topic()
-    title = f"🙏 {topic} | Bhakti Palm Art"
-    fallback_caption = f"{category} — {deity} की भक्ति से मन में शांति, शक्ति और विश्वास का प्रकाश।"
-    try:
-        generated_caption = gemini_text(f"Write one short, beautiful Hindi devotional caption for a social media Reel about {topic}. Keep it respectful, spiritual and concise. Return only the caption.")
-    except Exception as exc:
-        print(f"Gemini caption unavailable; using local caption: {exc}")
-        generated_caption = fallback_caption
-    description = f"{generated_caption}\n\n#Bhakti #SanatanDharma #{deity} #BhaktiReels #Shorts"
-
-    # Only the new topic/scene is sent to the image generator. The reference image
-    # is analyzed separately for STYLE ONLY, keeping the Flux prompt safely below
-    # Cloudflare's 2048-character live limit.
-    deity_en = {
-        "कृष्ण": "Lord Krishna playing flute",
-        "राधा-कृष्ण": "Radha and Lord Krishna together",
-        "शिव": "Lord Shiva / Mahadev",
-        "हनुमान": "Lord Hanuman",
-        "राम": "Lord Rama with Sita",
-        "माता": "Goddess Vaishno Devi",
-        "गंगा": "Goddess Ganga",
-        "जगन्नाथ": "Lord Jagannath",
-        "विष्णु": "Lord Vishnu",
-        "दुर्गा": "Goddess Durga",
-        "गणेश": "Lord Ganesha",
-        "श्याम": "Khatu Shyam",
-    }.get(deity, deity)
-    image_prompt = (
-        f"Devotional Palm Art featuring {deity_en}. "
-        f"Create the main sacred figure clearly in the center of the palm, surrounded by "
-        f"tiny connected devotional scenes inspired by {scene}. "
-        f"The complete real hand must remain visible from wrist through all five fingertips."
-    )
-    motion_prompt = f"""
-Animate this Palm-Art illustration as a premium devotional cinematic short about {topic}.
-Preserve the exact hand, finger geometry, blue-ink artwork and composition of the generated image.
-Create subtle believable motion inside the drawing: tiny pilgrims slowly walking, water gently flowing where present,
-clouds drifting, temple flags moving softly, tiny lamps flickering and a very subtle divine glow.
-Use a slow cinematic push-in with stable framing. Keep all ink lines crisp and coherent.
-Do not redraw the hand or replace the artwork. Do not introduce new objects.
-"""
-
+    topic, deity, category, music_category = TOPICS[1]
     image = WORK / "palm_art.png"
     raw_video = WORK / "wan2_video.mp4"
     video = WORK / "bhakti_reel.mp4"
 
-    generate_reference_guided_image(image_prompt, image)
-    generate_wan_video(image, motion_prompt, raw_video)
+    generate_reference_guided_image(image)
+    generate_motion_video(image, raw_video)
     music = choose_music(music_category)
     make_video(raw_video, music, video)
 
+    title = f"🙏 {topic} | Bhakti Palm Art"
+    description = f"{category} — {deity} की भक्ति से मन में शांति, शक्ति और विश्वास का प्रकाश।\n\n#Bhakti #SanatanDharma #Shiv #BhaktiReels #Shorts"
+
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({
+            "topic": topic,
+            "music": music.name,
+            "image": str(image),
+            "video": str(video),
+            "image_model": "Qwen-Image-Edit-2511 via Free.ai self-hosted",
+            "video_model": "FFmpeg cinematic motion",
+            "reference_used": True,
+            "posted": False
+        }, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Cloudflare LLaVA style analysis + Flux.1 Schnell", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+    print(json.dumps({
+        "topic": topic,
+        "facebook": fb,
+        "youtube_video_id": yt,
+        "music": music.name,
+        "image_model": "Qwen-Image-Edit-2511 via Free.ai self-hosted",
+        "video_model": "FFmpeg cinematic motion",
+        "reference_used": True
+    }, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
