@@ -140,9 +140,9 @@ the wrist.
 ABSOLUTELY AVOID tattoo, henna, mehndi, decal, sticker, printed glove, digital overlay,
 CGI, vector art, marker, paint, watercolor, sparse symbols, blank fingers, mountain-only
 composition, malformed hand, fused fingers, extra fingers, missing fingers, cropped wrist,
-cropped fingertips, duplicate hand, watermark, logo, large text or multicolored ink.
+cropped fingertips, duplicate hand, watermark, logo, ANY text, lettering, signature, handwriting, name, caption, signboard, typography or multicolored ink.
 
-The output must look physically drawn on real skin, not pasted over the hand.
+The output must look physically drawn on real skin, not pasted over the hand. Do not write any person name or signature anywhere on the hand or wrist.
 """
 
     last_error = None
@@ -301,6 +301,8 @@ def main():
         raise RuntimeError("Missing GitHub Secrets: " + ", ".join(missing))
 
     topic, deity, category, music_category, scene = choose_topic()
+    if test_only:
+        topic, deity, category, music_category, scene = TOPICS[1]  # deterministic Step1X test: Mahadev
     title = f"🙏 {topic} | Bhakti Palm Art"
     fallback_caption = f"{category} — {deity} की भक्ति से मन में शांति, शक्ति और विश्वास का प्रकाश।"
     try:
