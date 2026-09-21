@@ -1,0 +1,35 @@
+name: CC Video Test
+on:
+  workflow_dispatch:
+    inputs:
+      topic_index:
+        description: "0 Nature, 1 Wildlife, 2 Science, 3 Space, 4 Travel, 5 Facts"
+        required: false
+        default: "0"
+jobs:
+  cc-video-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install -U requests yt-dlp
+      - name: Find CC video, download and prepare Reel
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TOPIC_INDEX: ${{ inputs.topic_index }}
+        run: python cc_video_poc.py
+      - name: Upload test result
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-video-test
+          path: |
+            work_cc/cc_reel.mp4
+            work_cc/metadata.json
+            work_cc/source.mp4
+          retention-days: 3
