@@ -20,7 +20,7 @@ def details(key, vid):
     return x[0] if x else None
 
 def download(url, out):
-    cmd = ["yt-dlp","--no-playlist","--remote-components","ejs:github","--js-runtimes","deno","--extractor-args","youtube:player_client=web_safari","--merge-output-format","mp4","-f","bv*[height<=1080]+ba/b[height<=1080]/b","-o",str(out),url]
+    cmd = ["yt-dlp","--no-playlist","--remote-components","ejs:github","--js-runtimes","deno","--extractor-args","youtube:player_client=web,android_vr,tv_downgraded","--retries","3","--fragment-retries","3","--merge-output-format","mp4","-f","bv*[height<=1080]+ba/b[height<=1080]/b","-o",str(out),url]
     subprocess.run(cmd, check=True)
 
 def reel(src, out):
