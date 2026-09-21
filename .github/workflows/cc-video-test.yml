@@ -22,9 +22,9 @@ jobs:
           python -m pip install -U requests "yt-dlp[default]"
       - name: Find CC video, download and prepare Reel
         env:
-          YOUTUBE_API_KEY: \${{ secrets.YOUTUBE_API_KEY }}
-          GEMINI_API_KEY: \${{ secrets.GEMINI_API_KEY }}
-          TOPIC_INDEX: \${{ inputs.topic_index }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TOPIC_INDEX: ${{ inputs.topic_index }}
         run: python cc_video_poc_v2.py
       - name: Upload test result
         uses: actions/upload-artifact@v4
