@@ -38,6 +38,7 @@ jobs:
           docker network create cobalt-net
           git clone --depth 1 https://github.com/imputnet/yt-session-generator.git /tmp/yt-session-generator
           sed -i 's/nodriver.start(headless=False,/nodriver.start(headless=False, no_sandbox=True,/' /tmp/yt-session-generator/potoken_generator/extractor.py
+          sed -i '/^# Run/i RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app /tmp\nUSER app' /tmp/yt-session-generator/Dockerfile
           docker build -t yt-session-generator-fixed /tmp/yt-session-generator
           docker run -d --name yt-session-generator --network cobalt-net -p 127.0.0.1:8080:8080 --restart unless-stopped yt-session-generator-fixed
 
