@@ -25,9 +25,7 @@ def download(url, out):
         "videoQuality": "1080",
         "downloadMode": "auto",
         "youtubeVideoCodec": "h264",
-        "youtubeVideoContainer": "mp4",
-        "alwaysProxy": True,
-        "disableMetadata": False,
+        "alwaysProxy": False,
     }
     r = requests.post(
         "http://127.0.0.1:9000/",
