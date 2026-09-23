@@ -290,39 +290,92 @@ def choose_music(category: str) -> Path:
     return make_fallback_devotional_music(category)
 
 def generate_wan_video(image: Path, prompt: str, output: Path):
-    # Reliable no-quota AI-video fallback: create a cinematic 9:16 motion reel
-    # directly from the generated Palm-Art image. This avoids ZeroGPU/Space
-    # availability and still produces a moving short suitable for Reels.
-    last_error = None
-    for attempt in range(2):
-        try:
-            cmd = [
-                "ffmpeg", "-y", "-loop", "1", "-i", str(image),
-                "-t", "8",
-                "-vf",
-                "scale=2160:3840:force_original_aspect_ratio=increase,"
-                "crop=2160:3840,"
-                "zoompan=z='min(zoom+0.0008,1.08)':"
-                "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                "d=1:s=1080x1920:fps=30,"
-                "eq=contrast=1.03:saturation=1.05",
-                "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-                "-pix_fmt", "yuv420p", str(output),
-            ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-            if output.stat().st_size < 10000:
-                raise RuntimeError("FFmpeg returned an unexpectedly small video file.")
-            print("Video created as a cinematic Palm-Art motion reel with FFmpeg.")
-            return
-        except Exception as exc:
-            last_error = str(exc)
-            print(f"Motion video attempt {attempt + 1}/2 failed: {last_error}")
-            time.sleep(5)
-    raise RuntimeError(f"Motion video generation failed: {last_error}")
+    """
+    Generate a real AI image-to-video clip with Google Veo 3.1 Fast.
+    The generated Palm-Art image is used as the first frame so the video
+    keeps the same subject/style instead of using a simple FFmpeg zoom.
+    """
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("Missing GitHub Secret: GEMINI_API_KEY")
+
+    model = os.environ.get("VEO_MODEL", "veo-3.1-fast-generate-preview").strip()
+
+    try:
+        from google import genai
+        from google.genai import types
+    except Exception as exc:
+        raise RuntimeError(f"google-genai is required for Veo video generation: {exc}")
+
+    print(f"Starting Google Veo image-to-video: {model}")
+
+    client = genai.Client(api_key=key)
+    image_bytes = image.read_bytes()
+    if not image_bytes:
+        raise RuntimeError("Generated Palm-Art image is empty.")
+
+    source_image = types.Image(image_bytes=image_bytes, mime_type="image/png")
+
+    config = types.GenerateVideosConfig(
+        aspect_ratio="9:16",
+        resolution="720p",
+        duration_seconds=8,
+        person_generation="allow_adult",
+    )
+
+    operation = client.models.generate_videos(
+        model=model,
+        prompt=prompt,
+        image=source_image,
+        config=config,
+    )
+
+    for attempt in range(1, 43):
+        if operation.done:
+            break
+        print(f"Waiting for Veo video... {attempt}/42")
+        time.sleep(10)
+        operation = client.operations.get(operation)
+
+    if not operation.done:
+        raise RuntimeError("Veo video generation timed out after about 7 minutes.")
+
+    try:
+        generated_video = operation.response.generated_videos[0]
+        client.files.download(file=generated_video.video, destination=str(output))
+    except Exception as exc:
+        raise RuntimeError(f"Veo finished but video download failed: {exc}")
+
+    if not output.exists() or output.stat().st_size < 10000:
+        raise RuntimeError("Veo returned an unexpectedly small video file.")
+
+    print(f"Veo AI video generated successfully: {output}")
 
 def make_video(generated_video: Path, music: Path, output: Path):
-    vf = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p"
-    cmd = ["ffmpeg", "-y", "-i", str(generated_video), "-i", str(music), "-t", "10", "-vf", vf, "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", str(output)]
+    """Finalize a 9:16 Reel and replace Veo audio with the project's devotional song."""
+    vf = (
+        "scale=1080:1920:force_original_aspect_ratio=decrease,"
+        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,"
+        "format=yuv420p"
+    )
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(generated_video),
+        "-stream_loop", "-1", "-i", str(music),
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-t", "8",
+        "-vf", vf,
+        "-r", "24",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "19",
+        "-c:a", "aac",
+        "-b:a", "160k",
+        "-shortest",
+        "-movflags", "+faststart",
+        str(output),
+    ]
     subprocess.run(cmd, check=True)
 
 def facebook_reel(video: Path, title: str, description: str):
@@ -402,12 +455,22 @@ def main():
         f"The complete real hand must remain visible from wrist through all five fingertips."
     )
     motion_prompt = f"""
-Animate this Palm-Art illustration as a premium devotional cinematic short about {topic}.
-Preserve the exact hand, finger geometry, blue-ink artwork and composition of the generated image.
-Create subtle believable motion inside the drawing: tiny pilgrims slowly walking, water gently flowing where present,
-clouds drifting, temple flags moving softly, tiny lamps flickering and a very subtle divine glow.
-Use a slow cinematic push-in with stable framing. Keep all ink lines crisp and coherent.
-Do not redraw the hand or replace the artwork. Do not introduce new objects.
+Create a premium, photorealistic cinematic 9:16 AI video from this exact Palm-Art image about {topic}.
+Use the image as the opening frame and preserve the exact hand, five fingers, blue-ink artwork and sacred subject.
+
+Make it feel like a real filmed action sequence, not a slideshow:
+- one continuous shot with strong depth and parallax
+- start with a close macro view of the complete palm
+- camera smoothly pushes rapidly toward the main devotional artwork
+- the tiny illustrated world inside the palm comes alive with subtle believable motion
+- temple flags flutter, tiny lamps flicker, water flows, clouds drift and devotional figures move naturally where appropriate
+- briefly travel through the illustrated scene for a dramatic reveal, then gently pull back toward the hand
+- realistic lighting, shadows, lens depth, motion blur and cinematic camera movement
+- no jump cuts, no text, no captions, no logos, no extra hands
+- do not redraw, deform, melt or replace the hand
+- keep the blue-ink Palm-Art identity crisp and recognizable throughout
+- devotional, respectful, visually surprising and highly engaging for Facebook Reels and YouTube Shorts
+- no dialogue and no generated background music; the final edit will use the project's devotional song
 """
 
     image = WORK / "palm_art.png"
@@ -421,12 +484,12 @@ Do not redraw the hand or replace the artwork. Do not introduce new objects.
 
     if test_only:
         print("TEST_ONLY=true: generated but NOT posted.")
-        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Kaggle GPU SDXL image-to-image", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+        print(json.dumps({"topic": topic, "music": music.name, "image": str(image), "video": str(video), "image_model": "Kaggle GPU SDXL image-to-image", "video_model": os.getenv("VEO_MODEL", "veo-3.1-fast-generate-preview"), "reference_used_as_style_input": True}, ensure_ascii=False))
         return
 
     fb = facebook_reel(video, title, description)
     yt = youtube_upload(video, title, description)
-    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Hugging Face FLUX Kontext reference edit", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
+    print(json.dumps({"topic": topic, "facebook": fb, "youtube_video_id": yt, "music": music.name, "image_model": "Kaggle GPU SD-1.5-family reference-guided image", "video_model": "FFmpeg cinematic motion", "reference_used_as_style_input": True}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
