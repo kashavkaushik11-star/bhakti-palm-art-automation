@@ -35,6 +35,8 @@ def download(url, out):
         json=payload,
         timeout=180,
     )
+    print("Cobalt HTTP:", r.status_code)
+    print("Cobalt body:", r.text[:2000])
     r.raise_for_status()
     data = r.json()
     print("Cobalt response:", json.dumps(data, ensure_ascii=False))
