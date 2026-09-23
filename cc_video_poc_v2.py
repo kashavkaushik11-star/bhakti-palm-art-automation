@@ -20,8 +20,38 @@ def details(key, vid):
     return x[0] if x else None
 
 def download(url, out):
-    cmd = ["yt-dlp","--no-playlist","--remote-components","ejs:github","--js-runtimes","deno","--extractor-args","youtube:player_client=web,android_vr,tv_downgraded","--retries","3","--fragment-retries","3","--merge-output-format","mp4","-f","bv*[height<=1080]+ba/b[height<=1080]/b","-o",str(out),url]
-    subprocess.run(cmd, check=True)
+    payload = {
+        "url": url,
+        "videoQuality": "1080",
+        "downloadMode": "auto",
+        "youtubeVideoCodec": "h264",
+        "youtubeVideoContainer": "mp4",
+        "alwaysProxy": True,
+        "disableMetadata": False,
+    }
+    r = requests.post(
+        "http://127.0.0.1:9000/",
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        json=payload,
+        timeout=180,
+    )
+    r.raise_for_status()
+    data = r.json()
+    print("Cobalt response:", json.dumps(data, ensure_ascii=False))
+    status = data.get("status")
+    if status == "error":
+        raise RuntimeError(json.dumps(data, ensure_ascii=False))
+    if status == "picker":
+        raise RuntimeError("Cobalt returned multiple items; refusing ambiguous download.")
+    direct = data.get("url")
+    if not direct:
+        raise RuntimeError("Cobalt returned no download URL.")
+    with requests.get(direct, stream=True, timeout=300) as dl:
+        dl.raise_for_status()
+        with open(out, "wb") as fh:
+            for chunk in dl.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    fh.write(chunk)
 
 def reel(src, out):
     subprocess.run(["ffmpeg","-y","-i",str(src),"-vf","scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920","-t","60","-r","30","-c:v","libx264","-preset","veryfast","-crf","22","-c:a","aac","-b:a","128k","-movflags","+faststart",str(out)], check=True)
