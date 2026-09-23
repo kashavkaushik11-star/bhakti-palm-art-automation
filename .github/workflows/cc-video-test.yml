@@ -33,6 +33,23 @@ jobs:
           cd -
           yt-dlp -v "https://www.youtube.com/watch?v=aqz-KE-bpKQ" 2>&1 | grep -i "PO Token Providers" || true
           cat /tmp/bgutil.log || true
+      - name: Start Cobalt downloader
+        run: |
+          docker network create cobalt-net
+          docker run -d --name yt-session-generator --network cobalt-net --restart unless-stopped ghcr.io/imputnet/yt-session-generator:webserver
+          docker run -d --name cobalt --network cobalt-net -p 9000:9000 -e API_URL="http://127.0.0.1:9000/" -e YOUTUBE_SESSION_SERVER="http://yt-session-generator:8080/" ghcr.io/imputnet/cobalt:11
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:9000/ >/tmp/cobalt-info.json 2>/dev/null; then
+              echo "Cobalt ready"
+              cat /tmp/cobalt-info.json
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:9000/ >/tmp/cobalt-info.json
+          cat /tmp/cobalt-info.json
+          docker logs --tail 80 yt-session-generator || true
+          docker logs --tail 80 cobalt || true
       - name: Find CC video, download and prepare Reel
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
