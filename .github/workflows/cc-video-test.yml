@@ -36,8 +36,27 @@ jobs:
       - name: Start Cobalt downloader
         run: |
           docker network create cobalt-net
-          docker run -d --name yt-session-generator --network cobalt-net --restart unless-stopped ghcr.io/imputnet/yt-session-generator:webserver
+          docker run -d --name yt-session-generator --network cobalt-net -p 127.0.0.1:8080:8080 --restart unless-stopped ghcr.io/imputnet/yt-session-generator:webserver
+
+          echo "Waiting for YouTube session generator to create poToken..."
+          session_ready=0
+          for i in {1..120}; do
+            if curl -fsS --max-time 10 http://127.0.0.1:8080/token >/tmp/session.json 2>/dev/null; then
+              echo "YouTube session generator ready"
+              cat /tmp/session.json
+              session_ready=1
+              break
+            fi
+            sleep 3
+          done
+          if [ "$session_ready" -ne 1 ]; then
+            echo "YouTube session generator did not become ready"
+            docker logs --tail 120 yt-session-generator || true
+            exit 1
+          fi
+
           docker run -d --name cobalt --network cobalt-net -p 9000:9000 -e API_URL="http://127.0.0.1:9000/" -e YOUTUBE_SESSION_SERVER="http://yt-session-generator:8080/" ghcr.io/imputnet/cobalt:11
+
           for i in {1..60}; do
             if curl -fsS http://127.0.0.1:9000/ >/tmp/cobalt-info.json 2>/dev/null; then
               echo "Cobalt ready"
@@ -48,8 +67,8 @@ jobs:
           done
           curl -fsS http://127.0.0.1:9000/ >/tmp/cobalt-info.json
           cat /tmp/cobalt-info.json
-          docker logs --tail 80 yt-session-generator || true
-          docker logs --tail 80 cobalt || true
+          docker logs --tail 120 yt-session-generator || true
+          docker logs --tail 120 cobalt || true
       - name: Find CC video, download and prepare Reel
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
