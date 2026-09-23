@@ -35,44 +35,27 @@ jobs:
           cat /tmp/bgutil.log || true
       - name: Start Cobalt downloader
         run: |
-          docker network create cobalt-net
-          git clone --depth 1 https://github.com/imputnet/yt-session-generator.git /tmp/yt-session-generator
-          sed -i 's/nodriver.start(headless=False,/nodriver.start(headless=False, no_sandbox=True,/' /tmp/yt-session-generator/potoken_generator/extractor.py
-          sed -i '/^# Run/i RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app /tmp\nUSER app' /tmp/yt-session-generator/Dockerfile
-          docker build -t yt-session-generator-fixed /tmp/yt-session-generator
-          docker run -d --name yt-session-generator --network cobalt-net -p 127.0.0.1:8080:8080 --restart unless-stopped yt-session-generator-fixed
+          docker run -d --name cobalt -p 9000:9000 -e API_URL="http://127.0.0.1:9000/" ghcr.io/imputnet/cobalt:11
 
-          echo "Waiting for YouTube session generator to create poToken..."
-          session_ready=0
-          for i in {1..120}; do
-            if curl -fsS --max-time 10 http://127.0.0.1:8080/token >/tmp/session.json 2>/dev/null; then
-              echo "YouTube session generator ready"
-              cat /tmp/session.json
-              session_ready=1
-              break
-            fi
-            sleep 3
-          done
-          if [ "$session_ready" -ne 1 ]; then
-            echo "YouTube session generator did not become ready"
-            docker logs --tail 120 yt-session-generator || true
-            exit 1
-          fi
-
-          docker run -d --name cobalt --network cobalt-net -p 9000:9000 -e API_URL="http://127.0.0.1:9000/" -e YOUTUBE_SESSION_SERVER="http://yt-session-generator:8080/" ghcr.io/imputnet/cobalt:11
-
+          echo "Waiting for Cobalt..."
+          cobalt_ready=0
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:9000/ >/tmp/cobalt-info.json 2>/dev/null; then
+            if curl -fsS --max-time 10 http://127.0.0.1:9000/ >/tmp/cobalt-info.json 2>/dev/null; then
               echo "Cobalt ready"
               cat /tmp/cobalt-info.json
+              cobalt_ready=1
               break
             fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:9000/ >/tmp/cobalt-info.json
-          cat /tmp/cobalt-info.json
-          docker logs --tail 120 yt-session-generator || true
-          docker logs --tail 120 cobalt || true
+
+          if [ "$cobalt_ready" -ne 1 ]; then
+            echo "Cobalt did not become ready"
+            docker logs --tail 200 cobalt || true
+            exit 1
+          fi
+
+          docker logs --tail 100 cobalt || true
       - name: Find CC video, download and prepare Reel
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
